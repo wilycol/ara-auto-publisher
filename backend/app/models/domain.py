@@ -1,9 +1,85 @@
-from sqlalchemy import Column, Integer, String, Text, ForeignKey, DateTime, Boolean, Enum
+from sqlalchemy import Column, Integer, String, Text, ForeignKey, DateTime, Boolean, Enum, Numeric
+from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship, declarative_base
 from datetime import datetime
 import enum
+import uuid
 
 Base = declarative_base()
+
+# -----------------------------------------------------------------------------
+# 🆕 CORE PIVOT: FORUMS & FUNCTIONAL IDENTITIES (2026-01-24)
+# -----------------------------------------------------------------------------
+
+class Forum(Base):
+    """Fuente de contenido externo (Reddit, Discourse, etc)"""
+    __tablename__ = "forums"
+    
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name = Column(String, nullable=False)
+    platform = Column(String, nullable=False) # reddit, discourse, custom
+    base_url = Column(String, nullable=False)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    
+    threads = relationship("ForumThread", back_populates="forum")
+
+class ForumThread(Base):
+    """Hilos específicos extraídos de un foro"""
+    __tablename__ = "forum_threads"
+    
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    forum_id = Column(UUID(as_uuid=True), ForeignKey("forums.id"))
+    
+    title = Column(String, nullable=False)
+    thread_url = Column(String, nullable=False)
+    extracted_at = Column(DateTime, nullable=True)
+    status = Column(String, default="pending") # pending | processed | ignored
+    created_at = Column(DateTime, default=datetime.utcnow)
+    
+    forum = relationship("Forum", back_populates="threads")
+
+class FunctionalIdentity(Base):
+    """Identidad funcional que reemplaza a LinkedIn como 'persona'"""
+    __tablename__ = "functional_identities"
+    
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name = Column(String, nullable=False)
+    role = Column(String, nullable=False) # founder, dev, marketer
+    tone = Column(String, nullable=True) # analytical, bold
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    
+    reports = relationship("ExecutiveReport", back_populates="identity")
+
+class ReportedUrl(Base):
+    """URLs relevantes detectadas manualmente o por crawler"""
+    __tablename__ = "reported_urls"
+    
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    source = Column(String, nullable=False) # forum, manual, crawler
+    url = Column(String, nullable=False)
+    title = Column(String, nullable=True)
+    relevance_score = Column(Numeric, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+class ExecutiveReport(Base):
+    """El producto final: Resumen ejecutivo para la identidad"""
+    __tablename__ = "executive_reports"
+    
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    identity_id = Column(UUID(as_uuid=True), ForeignKey("functional_identities.id"))
+    
+    summary = Column(Text, nullable=False)
+    recommendations = Column(Text, nullable=True)
+    source_count = Column(Integer, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    
+    identity = relationship("FunctionalIdentity", back_populates="reports")
+
+# -----------------------------------------------------------------------------
+# LEGACY / SUPPORT MODELS
+# -----------------------------------------------------------------------------
 
 class ContentStatus(str, enum.Enum):
     PENDING = "pending" # Replaces DRAFT
@@ -71,10 +147,10 @@ class Campaign(Base):
     name = Column(String, index=True)
     objective = Column(String) # educar, vender, posicionar
     tone = Column(String) # formal, didáctico, ácido
-    topics = Column(String) # JSON string or comma-separated list of tags
+    # topics = Column(String) # Removed to match Supabase schema
     
-    posts_per_day = Column(Integer, default=1)
-    schedule_strategy = Column(String) # intervalos, bloques
+    # posts_per_day = Column(Integer, default=1) # Removed
+    # schedule_strategy = Column(String) # Removed
     
     status = Column(String, default=CampaignStatus.ACTIVE)
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -94,6 +170,7 @@ class Topic(Base):
     weight = Column(Integer, default=1) # Probabilidad de selección
     
     project = relationship("Project", back_populates="topics")
+    # posts = relationship("Post", back_populates="topic") # Removed relationship
 
 class EditorialRule(Base):
     """Instrucciones de tono y estilo"""
@@ -113,20 +190,20 @@ class Post(Base):
     id = Column(Integer, primary_key=True, index=True)
     project_id = Column(Integer, ForeignKey("projects.id"))
     campaign_id = Column(Integer, ForeignKey("campaigns.id"), nullable=True)
-    topic_id = Column(Integer, ForeignKey("topics.id"), nullable=True)
+    # topic_id = Column(Integer, ForeignKey("topics.id"), nullable=True) # Removed to match Supabase schema
     
     title = Column(String, nullable=True)
     content_text = Column(Text)
     hashtags = Column(String, nullable=True) # JSON string or comma-separated
-    cta = Column(String, nullable=True)
+    # cta = Column(String, nullable=True) # Removed
     platform = Column(String, default="linkedin")
     status = Column(String, default=ContentStatus.PENDING) # Enum como string para compatibilidad
     
     # Observability / AI Metadata
-    ai_model = Column(String, nullable=True)
-    generation_time_ms = Column(Integer, nullable=True)
-    tokens_used = Column(Integer, nullable=True)
-    generated_at = Column(DateTime, default=datetime.utcnow)
+    # ai_model = Column(String, nullable=True) # Removed
+    # generation_time_ms = Column(Integer, nullable=True) # Removed
+    # tokens_used = Column(Integer, nullable=True) # Removed
+    # generated_at = Column(DateTime, default=datetime.utcnow) # Removed
 
     scheduled_for = Column(DateTime, nullable=True)
     published_at = Column(DateTime, nullable=True)

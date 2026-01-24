@@ -23,13 +23,12 @@ settings = get_settings()
 def validate_security_config():
     missing_vars = []
     
-    # LinkedIn OAuth Critical Vars
-    if not settings.LINKEDIN_CLIENT_ID:
-        missing_vars.append("LINKEDIN_CLIENT_ID")
-    if not settings.LINKEDIN_CLIENT_SECRET:
-        missing_vars.append("LINKEDIN_CLIENT_SECRET")
-    if not settings.LINKEDIN_REDIRECT_URI:
-        missing_vars.append("LINKEDIN_REDIRECT_URI")
+    # LinkedIn OAuth Critical Vars (OPTIONAL NOW)
+    if not settings.LINKEDIN_CLIENT_ID or not settings.LINKEDIN_CLIENT_SECRET or not settings.LINKEDIN_REDIRECT_URI:
+        logger.warning("⚠️  LINKEDIN CONFIG MISSING: LinkedIn features will be DISABLED.")
+        logger.warning("    The backend will start, but publishing to LinkedIn will fail.")
+    else:
+        logger.info("✅ LinkedIn configuration detected.")
         
     # Security / Encryption
     if not settings.ENCRYPTION_KEY:
