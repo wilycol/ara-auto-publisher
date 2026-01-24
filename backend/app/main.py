@@ -77,9 +77,11 @@ allow_origins = [
     "http://127.0.0.1:5173",
     "http://localhost:3000",
     "http://localhost:8000",
+    "https://ara-auto-publisher-frontend.vercel.app", # Vercel Production
 ]
 if settings.ENVIRONMENT == "production":
-    allow_origins = [settings.FRONTEND_URL] if settings.FRONTEND_URL else allow_origins
+    if settings.FRONTEND_URL:
+        allow_origins.append(settings.FRONTEND_URL)
 
 app.add_middleware(
     CORSMiddleware,
