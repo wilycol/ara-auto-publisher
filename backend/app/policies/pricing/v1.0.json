@@ -1,0 +1,22 @@
+{
+  "version": "1.0",
+  "currency": "USD",
+  "effective_date": "2024-01-01",
+  "plans": {
+    "free": {
+      "text": { "unit_price": 0.00, "unit": "request" },
+      "image": { "unit_price": 0.00, "unit": "image" },
+      "video": { "unit_price": 0.00, "unit": "second" }
+    },
+    "pro": {
+      "text": { "unit_price": 0.001, "unit": "1k_tokens" },
+      "image": { "unit_price": 0.04, "unit": "image" },
+      "video": { "unit_price": 0.10, "unit": "second" }
+    },
+    "enterprise": {
+      "text": { "unit_price": 0.0005, "unit": "1k_tokens" },
+      "image": { "unit_price": 0.03, "unit": "image" },
+      "video": { "unit_price": 0.08, "unit": "second" }
+    }
+  }
+}

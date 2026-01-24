@@ -1,0 +1,57 @@
+{
+  "agent_modes": {
+    "strict": {
+      "max_risk_allowed": "medium",
+      "tone": "legal_neutral",
+      "actions": ["contextualize", "request_sources"],
+      "capabilities": {
+        "text": true,
+        "images": {
+          "enabled": true,
+          "max_per_day": 3,
+          "resolution": "standard"
+        },
+        "video": {
+          "enabled": false
+        }
+      }
+    },
+    "educational": {
+      "max_risk_allowed": "high",
+      "tone": "didactic",
+      "actions": ["educate", "media_literacy", "neutralize"],
+      "capabilities": {
+        "text": true,
+        "images": {
+          "enabled": true,
+          "max_per_day": 20,
+          "resolution": "high"
+        },
+        "video": {
+          "enabled": true,
+          "max_per_day": 5,
+          "max_duration_seconds": 30
+        }
+      }
+    },
+    "editorial": {
+      "max_risk_allowed": "critical",
+      "tone": "informative_professional",
+      "actions": ["legal_reframe", "contextualize"],
+      "capabilities": {
+        "text": true,
+        "images": {
+          "enabled": true,
+          "max_per_day": 100,
+          "resolution": "ultra"
+        },
+        "video": {
+          "enabled": true,
+          "max_per_day": 20,
+          "max_duration_seconds": 60,
+          "formats": ["reels", "shorts", "stories"]
+        }
+      }
+    }
+  }
+}

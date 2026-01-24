@@ -1,0 +1,5 @@
+{
+  "free": { "monthly_usd": 0.00 },
+  "pro": { "monthly_usd": 20.00 },
+  "enterprise": { "monthly_usd": 200.00 }
+}

@@ -1,0 +1,14 @@
+fastapi
+uvicorn
+sqlalchemy
+pydantic
+pydantic-settings
+python-dotenv
+alembic
+httpx
+requests
+apscheduler
+croniter
+pyjwt
+cryptography
+psycopg2-binary
