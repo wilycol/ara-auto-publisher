@@ -35,6 +35,11 @@ class PostRead(PostBase):
     published_at: Optional[datetime]
     media: List[MediaRead] = []
 
+    # Manual Output / UX Fields
+    manual_content: str
+    identity_used: str
+    recommended_platforms: List[str]
+
     class Config:
         from_attributes = True
 

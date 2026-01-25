@@ -1,6 +1,13 @@
 import sys
 import os
 import uuid
+from dotenv import load_dotenv
+
+# Load env from backend/.env explicitly
+env_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".env"))
+print(f"Loading env from: {env_path}")
+load_dotenv(env_path)
+
 from sqlalchemy.orm import Session
 # Ensure we can import app modules by adding backend to path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -66,7 +73,7 @@ def seed_dev_data():
         if post_count < 3:
             print(f"   Found {post_count} posts. Adding fresh test posts...")
             posts_to_create = [
-                {"title": "Hello World", "status": ContentStatus.DRAFT},
+                {"title": "Hello World", "status": ContentStatus.PENDING}, # Changed DRAFT to PENDING
                 {"title": "Feature Announce", "status": ContentStatus.APPROVED},
                 {"title": "Weekly Recap", "status": ContentStatus.SCHEDULED}
             ]

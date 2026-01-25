@@ -53,13 +53,15 @@ Si ves `✅ [SEED DEV] Completed successfully`, la base de datos y la conexión 
 ## 5. Deploy Frontend (Vercel)
 
 1.  Importa el proyecto en Vercel.
-2.  **Build Settings**:
-    *   Framework Preset: Vite
-    *   Root Directory: `frontend`
-3.  **Environment Variables**:
-    *   `VITE_API_URL`: La URL de tu backend en Render (ej: `https://ara-backend-dev.onrender.com/api/v1`)
-    *   `VITE_SUPABASE_URL`: Tu URL de Supabase.
-    *   `VITE_SUPABASE_ANON_KEY`: Tu Anon Key.
+2.  **Configuración Importante**:
+    *   **Root Directory**: Asegúrate de seleccionar `frontend` (NO la raíz).
+    *   **Framework Preset**: Selecciona `Vite` (como se ve en tu captura).
+    *   **Build Command**: Dejar por defecto (`npm run build`).
+    *   **Output Directory**: Dejar por defecto (`dist`).
+3.  **Environment Variables** (Copiar y pegar):
+    *   `VITE_SUPABASE_URL`: `https://pzauswcerfupuyqreqdr.supabase.co`
+    *   `VITE_SUPABASE_ANON_KEY`: `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB6YXVzd2NlcmZ1cHV5cXJlcWRyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjkyMDIxMzgsImV4cCI6MjA4NDc3ODEzOH0.bcRy3RiQUNwXVi1aQHmEZ-GG8Xn5XVTLpkZWPsET_08`
+    *   `VITE_API_URL`: `https://ara-auto-publisher.onrender.com/api/v1`
 
 ## 6. Validación Final
 

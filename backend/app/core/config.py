@@ -24,6 +24,12 @@ class Settings(BaseSettings):
     AI_BASE_URL: str = "https://api.deepseek.com/v1"
     AI_MODEL: str = "deepseek-chat"
 
+    # Feature Flags (Defaults to FALSE for safety)
+    FEATURE_LINKEDIN_ENABLED: bool = False
+    FEATURE_FACEBOOK_ENABLED: bool = False
+    FEATURE_INSTAGRAM_ENABLED: bool = False
+    FEATURE_TIKTOK_ENABLED: bool = False
+
     # LinkedIn & Security
     LINKEDIN_CLIENT_ID: str = ""
     LINKEDIN_CLIENT_SECRET: str = ""

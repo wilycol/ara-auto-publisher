@@ -1,8 +1,10 @@
 from fastapi import APIRouter
-from app.api import topics, jobs, posts, projects, auth, campaigns, guide, internal_usage, tracking, internal_impact, internal_versioning, internal_automation, internal_control
+from app.api import topics, jobs, posts, projects, auth, campaigns, guide, internal_usage, tracking, internal_impact, internal_versioning, internal_automation, internal_control, forums, forum_threads
 
 api_router = APIRouter()
 
+api_router.include_router(forums.router, prefix="/forums", tags=["Forums"])
+api_router.include_router(forum_threads.router, prefix="/forums", tags=["ForumThreads"])
 api_router.include_router(projects.router, prefix="/projects", tags=["Projects"])
 api_router.include_router(campaigns.router, prefix="/campaigns", tags=["Campaigns"])
 api_router.include_router(topics.router, prefix="/topics", tags=["Topics"])

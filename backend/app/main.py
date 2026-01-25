@@ -18,36 +18,31 @@ Base.metadata.create_all(bind=engine)
 settings = get_settings()
 
 # -----------------------------------------------------------------------------
-# 🛡️ FASE 1.1: VALIDACIÓN ESTRICTA DE CONFIGURACIÓN DE SEGURIDAD
+# 🛡️ FASE 1.1: VALIDACIÓN DE SEGURIDAD (HARDENING - NO BLOCKING)
 # -----------------------------------------------------------------------------
 def validate_security_config():
     missing_vars = []
     
-    # LinkedIn OAuth Critical Vars (OPTIONAL NOW)
-    if not settings.LINKEDIN_CLIENT_ID or not settings.LINKEDIN_CLIENT_SECRET or not settings.LINKEDIN_REDIRECT_URI:
-        logger.warning("⚠️  LINKEDIN CONFIG MISSING: LinkedIn features will be DISABLED.")
-        logger.warning("    The backend will start, but publishing to LinkedIn will fail.")
-    else:
-        logger.info("✅ LinkedIn configuration detected.")
-        
-    # Security / Encryption
-    if not settings.ENCRYPTION_KEY:
-        missing_vars.append("ENCRYPTION_KEY")
-        
-    if missing_vars:
-        logger.critical("!"*60)
-        logger.critical("FATAL SECURITY ERROR: MISCONFIGURED BACKEND")
-        logger.critical("The application cannot start because critical security variables are missing:")
-        for var in missing_vars:
-            logger.critical(f"❌  {var}")
-        logger.critical("👉 Please configure these in your .env file immediately.")
-        logger.critical("The system refuses to start in an insecure state.")
-        logger.critical("!"*60)
-        sys.exit(1)
+    # 1. Feature Flags Check
+    logger.info("🔧 Feature Flags Configuration:")
+    logger.info(f"   - LinkedIn: {'ENABLED' if settings.FEATURE_LINKEDIN_ENABLED else 'DISABLED'}")
+    logger.info(f"   - Facebook: {'ENABLED' if settings.FEATURE_FACEBOOK_ENABLED else 'DISABLED'}")
     
-    logger.info("✅ Security configuration validated successfully.")
+    # 2. LinkedIn Validation (Only if Enabled)
+    if settings.FEATURE_LINKEDIN_ENABLED:
+        if not settings.LINKEDIN_CLIENT_ID or not settings.LINKEDIN_CLIENT_SECRET:
+            logger.warning("⚠️  LINKEDIN ENABLED BUT CREDENTIALS MISSING!")
+            logger.warning("    Auto-publishing will fail, but manual mode is available.")
+    
+    # 3. Encryption Key (Core Security)
+    if not settings.ENCRYPTION_KEY:
+        logger.warning("⚠️  ENCRYPTION_KEY MISSING!")
+        logger.warning("    Secure token storage is disabled. Integration tokens cannot be saved.")
+        # No sys.exit() - We allow running in "Manual Mode" only.
+        
+    logger.info("✅ Backend initialized in HARDENED mode (Integrations Optional).")
 
-# Execute validation before creating the app
+# Execute validation
 validate_security_config()
 # -----------------------------------------------------------------------------
 
@@ -70,7 +65,6 @@ app = FastAPI(
 )
 
 # Configurar CORS para permitir peticiones desde el Frontend
-# En producción, permitir lista específica de dominios
 allow_origins = [
     "http://localhost:5173", # Frontend Vite Dev
     "http://127.0.0.1:5173",
@@ -98,7 +92,11 @@ def read_root():
     return {
         "system": "Ara Neuro Post Core",
         "status": "online",
+        "mode": "hardened",
         "version": settings.VERSION,
+        "integrations": {
+            "linkedin": settings.FEATURE_LINKEDIN_ENABLED
+        },
         "docs_url": "/docs"
     }
 

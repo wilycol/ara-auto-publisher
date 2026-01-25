@@ -33,6 +33,8 @@ class ForumThread(Base):
     
     title = Column(String, nullable=False)
     thread_url = Column(String, nullable=False)
+    content = Column(Text, nullable=True)
+    author = Column(String, nullable=True)
     extracted_at = Column(DateTime, nullable=True)
     status = Column(String, default="pending") # pending | processed | ignored
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -82,15 +84,23 @@ class ExecutiveReport(Base):
 # -----------------------------------------------------------------------------
 
 class ContentStatus(str, enum.Enum):
-    PENDING = "pending" # Replaces DRAFT
+    # Old statuses (kept for compatibility/migrations if needed, but deprecated in usage)
+    PENDING = "pending" 
     GENERATED = "generated"
     APPROVED = "approved"
     REJECTED = "rejected"
     PROCESSING = "processing"
-    FAILED_AI = "failed_ai" # Replaces FAILED
+    FAILED_AI = "failed_ai"
     FAILED = "failed"
     SCHEDULED = "scheduled"
     PUBLISHED = "published"
+    
+    # New Explicit Statuses (3.0)
+    DRAFT = "draft"
+    READY_MANUAL = "ready_manual"
+    SCHEDULED_AUTO = "scheduled_auto"
+    PUBLISHED_AUTO = "published_auto"
+    FAILED_AUTO_MANUAL_AVAILABLE = "failed_auto_manual_available"
 
 class MediaType(str, enum.Enum):
     IMAGE = "image"
@@ -190,19 +200,20 @@ class Post(Base):
     id = Column(Integer, primary_key=True, index=True)
     project_id = Column(Integer, ForeignKey("projects.id"))
     campaign_id = Column(Integer, ForeignKey("campaigns.id"), nullable=True)
+    identity_id = Column(UUID(as_uuid=True), ForeignKey("functional_identities.id"), nullable=True)
     # topic_id = Column(Integer, ForeignKey("topics.id"), nullable=True) # Removed to match Supabase schema
     
     title = Column(String, nullable=True)
     content_text = Column(Text)
     hashtags = Column(String, nullable=True) # JSON string or comma-separated
-    # cta = Column(String, nullable=True) # Removed
+    cta = Column(String, nullable=True)
     platform = Column(String, default="linkedin")
-    status = Column(String, default=ContentStatus.PENDING) # Enum como string para compatibilidad
+    status = Column(String, default=ContentStatus.DRAFT) # Changed default to DRAFT
     
     # Observability / AI Metadata
-    # ai_model = Column(String, nullable=True) # Removed
-    # generation_time_ms = Column(Integer, nullable=True) # Removed
-    # tokens_used = Column(Integer, nullable=True) # Removed
+    ai_model = Column(String, nullable=True)
+    generation_time_ms = Column(Integer, nullable=True)
+    tokens_used = Column(Integer, nullable=True)
     # generated_at = Column(DateTime, default=datetime.utcnow) # Removed
 
     scheduled_for = Column(DateTime, nullable=True)
@@ -213,6 +224,28 @@ class Post(Base):
     project = relationship("Project", back_populates="posts")
     campaign = relationship("Campaign", back_populates="posts")
     media = relationship("Media", back_populates="post")
+    identity = relationship("FunctionalIdentity")
+
+    @property
+    def manual_content(self):
+        parts = []
+        if self.title:
+            parts.append(f"# {self.title}")
+        parts.append(self.content_text or "")
+        if self.cta:
+             parts.append(f"CTA: {self.cta}")
+        if self.hashtags:
+            parts.append(f"\n{self.hashtags}")
+        return "\n\n".join(parts)
+
+    @property
+    def identity_used(self):
+        return self.identity.name if self.identity else "Ara Default Identity"
+
+    @property
+    def recommended_platforms(self):
+        return [self.platform] if self.platform else ["linkedin", "twitter"]
+
 
 class Media(Base):
     """Archivos multimedia asociados"""
