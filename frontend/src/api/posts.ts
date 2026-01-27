@@ -17,5 +17,10 @@ export const postsApi = {
   publishNow: async (id: number): Promise<Post> => {
     const response = await apiClient.post<{ data: Post }>(`/posts/${id}/publish`);
     return response.data.data;
+  },
+
+  markAsPublished: async (id: number): Promise<Post> => {
+    const response = await apiClient.post<{ data: Post }>(`/posts/${id}/mark-published`);
+    return response.data.data;
   }
 };

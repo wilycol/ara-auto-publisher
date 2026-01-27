@@ -76,11 +76,14 @@ class SchedulerService:
             ).first()
             
             if not account:
-                # Si no hay cuenta, no podemos publicar automáticamente.
-                # Fallamos "gracefully" indicando que se requiere manual.
-                logger.warning(f"⚠️  Post {post.id}: No hay cuenta conectada. Se requiere publicación manual.")
-                raise ValueError(f"No hay cuenta conectada activa para {post.platform}")
-                
+                # Si no hay cuenta, pasamos a MODO MANUAL ASISTIDO
+                # En lugar de fallar, marcamos como listo para publicar manualmente
+                logger.info(f"ℹ️  Post {post.id}: No hay cuenta conectada. Cambiando a estado READY_MANUAL (Modo Manual Asistido).")
+                post.status = ContentStatus.READY_MANUAL
+                # Aquí se podría disparar una notificación (email/push) en el futuro
+                db.commit()
+                return
+
             # 4. Publicar (Delegar al adaptador)
             # Usamos el helper asyncio_run para ejecutar la corutina
             result = asyncio_run(adapter.publish(post, account))

@@ -20,6 +20,36 @@ class OpenRouterProvider(AIProviderAdapter):
         self.model = model
         self.base_url = "https://openrouter.ai/api/v1"
         
+    async def check_health(self) -> bool:
+        if not self.api_key:
+            return False
+            
+        headers = {
+            "Authorization": f"Bearer {self.api_key}"
+        }
+        
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            try:
+                # Verificar validez de key usando endpoint de OpenRouter
+                response = await client.get(
+                    f"{self.base_url}/auth/key",
+                    headers=headers
+                )
+                
+                if response.status_code == 200:
+                    return True
+                
+                # Si auth/key no está disponible (algunos proxies), probar models
+                response = await client.get(
+                    f"{self.base_url}/models",
+                    headers=headers
+                )
+                return response.status_code == 200
+                
+            except Exception as e:
+                # logger.warning(f"Health check failed for OpenRouter: {e}")
+                return False
+
     async def generate(self, prompt: str, **kwargs) -> str:
         if not self.api_key:
             raise ValueError("OPENROUTER_API_KEY no configurada")

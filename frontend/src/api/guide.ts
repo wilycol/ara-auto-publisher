@@ -1,23 +1,34 @@
 import client from './client';
 
-export type GuideMode = 'guided' | 'collaborator' | 'expert';
+export type GuideMode = 'guided' | 'collaborator' | 'expert' | 'identity_creation';
 
 export interface GuideOption {
   label: string;
   value: string;
 }
 
+export interface IdentityDraft {
+  name?: string;
+  purpose?: string;
+  tone?: string;
+  platforms?: string[];
+  communication_style?: string;
+  content_limits?: string;
+}
+
 export interface GuideState {
   step: number;
   objective?: string;
   audience?: string;
-  platform?: "linkedin" | "instagram" | "facebook" | "twitter";
+  platform?: string;
   tone?: string;
-  topics?: string[];
-  postsPerDay?: number;
-  scheduleStrategy?: "distributed" | "morning_evening";
+  topics?: string[] | string;
+  postsPerDay?: number | string;
+  scheduleStrategy?: string;
   extra_context?: string;
   conversation_summary?: string;
+  identity_draft?: IdentityDraft;
+  identity_id?: string;
 }
 
 export interface GuideNextRequest {

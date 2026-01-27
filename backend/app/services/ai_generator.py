@@ -11,24 +11,42 @@ class AIGeneratorService:
 
     def _build_prompt(self, campaign: Campaign, platform: str) -> str:
         """
-        Construye el Prompt Maestro basado en la campaña.
+        Construye el Prompt Maestro basado en la campaña y la identidad funcional (si existe).
         """
+        # Base Persona
+        persona_instructions = "Eres un estratega de contenido profesional especializado en redes sociales."
+        
+        # Identity Overlay
+        if campaign.identity:
+            id_name = campaign.identity.name
+            id_role = campaign.identity.role or "experto"
+            id_purpose = campaign.identity.purpose or ""
+            id_tone = campaign.identity.tone or campaign.tone
+            id_style = getattr(campaign.identity, 'communication_style', '') or "profesional y directo"
+            id_limits = getattr(campaign.identity, 'content_limits', '') or "No uses clickbait. No inventes datos."
+            
+            persona_instructions = f"""
+Eres {id_name}.
+Tu propósito principal es: {id_purpose}.
+Tu tono de voz debe ser: {id_tone}.
+Estilo de comunicación: {id_style}.
+
+LÍMITES (Lo que NO debes hacer):
+{id_limits}
+"""
+        
         return f"""
 Sistema
-Eres un estratega de contenido profesional especializado en redes sociales.
-Tu tarea es generar publicaciones alineadas a un objetivo, tono y temática.
+{persona_instructions}
+Tu tarea es generar publicaciones alineadas a un objetivo y temática.
 Responde EXCLUSIVAMENTE en JSON válido.
 
 Usuario
 Objetivo de la campaña: {campaign.objective}
-Tono: {campaign.tone}
-Temas: {campaign.topics}
+Tono (Override campaña): {campaign.tone}
 Plataforma: {platform}
 
 Instrucciones
-- No uses emojis (por ahora)
-- No repitas frases genéricas
-- No menciones IA
 - Mantén el texto claro, útil y humano
 - Devuelve solo JSON válido con la siguiente estructura:
 {{

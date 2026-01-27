@@ -4,8 +4,10 @@ import type { Message } from '../components/guide/GuideChat';
 import { campaignsApi } from '../api/campaigns';
 import { guideApi } from '../api/guide';
 import type { GuideState, GuideMode } from '../api/guide';
+import { identitiesApi } from '../api/identities';
+import type { Identity } from '../api/identities';
 import { useNavigate } from 'react-router-dom';
-import { Bot, FileEdit, Sparkles, Zap } from 'lucide-react';
+import { Bot, FileEdit, Sparkles, Zap, UserCircle, UserPlus } from 'lucide-react';
 
 // ------------------------------------------------------------------
 // 🧠 FASE 3.2 — Estado Conversacional (OBLIGATORIO)
@@ -18,13 +20,22 @@ export const Guide: React.FC = () => {
   const navigate = useNavigate();
   const [isProcessing, setIsProcessing] = useState(false);
   const [isBlocked, setIsBlocked] = useState(false);
-  const [mode, setMode] = useState<ViewMode>('guided');
+  const [mode, setMode] = useState<ViewMode>('collaborator');
+  const [identities, setIdentities] = useState<Identity[]>([]);
   
   // Ref to track current mode for async operations
   const modeRef = React.useRef(mode);
   useEffect(() => {
     modeRef.current = mode;
   }, [mode]);
+
+  const loadIdentities = () => {
+    identitiesApi.getAll().then(setIdentities).catch(console.error);
+  };
+
+  useEffect(() => {
+    loadIdentities();
+  }, []);
   
   // 🧠 FASE 4.2 — Observabilidad: Session ID
   const [sessionId] = useState(() => {
@@ -59,6 +70,7 @@ export const Guide: React.FC = () => {
     switch (m) {
       case 'collaborator': return 'Soy ARA Post Manager, tu copiloto para convertir ideas desordenadas en campañas claras y accionables. Vamos al grano. ¿Qué objetivo tienes con tu campaña?';
       case 'expert': return '¿Objetivo de la campaña?';
+      case 'identity_creation': return 'Hola, vamos a configurar una nueva Identidad Funcional. ¿Qué nombre le ponemos?';
       case 'guided': default: return 'Cuéntame qué quieres lograr con tu contenido.\nNo pienses en redes todavía, piensa en el objetivo.';
     }
   };
@@ -67,6 +79,7 @@ export const Guide: React.FC = () => {
     topic: '',
     platform: 'linkedin',
     tone: 'professional',
+    identity_id: '',
     extraInfo: ''
   });
 
@@ -77,6 +90,7 @@ export const Guide: React.FC = () => {
       topics: [manualFormData.topic],
       platform: manualFormData.platform as GuideState['platform'],
       tone: manualFormData.tone,
+      identity_id: manualFormData.identity_id || undefined,
       extra_context: manualFormData.extraInfo
     };
     await executeCampaignCreation(state);
@@ -226,9 +240,9 @@ export const Guide: React.FC = () => {
       await campaignsApi.create({
         project_id: 1, // Hardcoded for MVP
         name: campaignName,
-        objective: finalState.objective || finalState.extra_context || 'Generar engagement y posicionamiento',
+        objective: `${finalState.objective || finalState.extra_context || 'Generar engagement y posicionamiento'} [Temas: ${finalState.topics ? (Array.isArray(finalState.topics) ? finalState.topics.join(',') : finalState.topics) : 'General'}]`,
         tone: finalState.tone || 'professional',
-        topics: finalState.topics ? finalState.topics.join(',') : 'General',
+        identity_id: finalState.identity_id,
         start_date: startDate,
         status: 'draft' // lowercase to match enum
       });
@@ -250,69 +264,82 @@ export const Guide: React.FC = () => {
   };
 
   return (
-    <div className="h-full flex flex-col bg-slate-950 overflow-hidden rounded-2xl border border-slate-800 shadow-2xl">
+    <div className="h-[100dvh] flex flex-col bg-slate-950 overflow-hidden sm:rounded-2xl border-x-0 sm:border border-slate-800 shadow-2xl">
       {/* Header with Mode Selector */}
-      <header className="bg-slate-900/80 backdrop-blur-md border-b border-slate-800 px-4 py-3 md:px-6 md:py-4 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 shrink-0">
-        <div>
-          <h1 className="text-xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-amber-400 to-amber-600">
-            AraPost Manager
-          </h1>
-          <p className="text-sm text-slate-400 hidden sm:block">
-            Tu asistente IA para crear contenido de alto impacto
-          </p>
+      <header className="bg-slate-900/80 backdrop-blur-md border-b border-slate-800 px-3 py-2 md:px-6 md:py-4 flex flex-col md:flex-row justify-between items-start md:items-center gap-3 shrink-0 z-10">
+        <div className="flex items-center justify-between w-full md:w-auto">
+          <div>
+            <h1 className="text-lg md:text-xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-amber-400 to-amber-600">
+              AraPost Manager
+            </h1>
+            <p className="text-xs text-slate-400 hidden sm:block">
+              Tu asistente IA para crear contenido de alto impacto
+            </p>
+          </div>
+          {/* Mobile only: status indicator or small action could go here */}
         </div>
 
-        {/* Mode Selector */}
-        <div className="flex flex-wrap items-center gap-1 bg-slate-950/50 p-1 rounded-lg border border-slate-800 w-full md:w-auto overflow-x-auto">
+        {/* Mode Selector & Actions */}
+        <div className="grid grid-cols-[1fr_auto] sm:flex sm:flex-wrap items-center gap-2 w-full md:w-auto">
+          {/* 1. Mode Selector (Dropdown) */}
+          <div className="relative group w-full sm:w-auto sm:flex-1 md:flex-none">
+            <select
+              value={mode === 'identity_creation' ? '' : mode}
+              onChange={(e) => e.target.value && setMode(e.target.value as ViewMode)}
+              className="w-full md:w-auto appearance-none bg-slate-950/50 border border-slate-800 hover:border-slate-700 text-slate-300 text-sm rounded-lg pl-9 pr-8 py-2 focus:outline-none focus:ring-1 focus:ring-indigo-500/50 transition-all cursor-pointer min-w-[140px]"
+            >
+              <option value="collaborator">✨ Colaborador</option>
+              <option value="guided">🤖 Guía</option>
+              <option value="expert">⚡ Experto</option>
+              <option value="manual_form">📝 Manual</option>
+              {mode === 'identity_creation' && <option value="" disabled hidden>👤 Creando ID...</option>}
+            </select>
+            <div className="absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-slate-500">
+              {mode === 'collaborator' && <Sparkles size={16} />}
+              {mode === 'guided' && <Bot size={16} />}
+              {mode === 'expert' && <Zap size={16} />}
+              {mode === 'manual_form' && <FileEdit size={16} />}
+              {mode === 'identity_creation' && <UserPlus size={16} />}
+            </div>
+          </div>
+
+          {/* 2. Create ID Button */}
           <button
-            onClick={() => setMode('guided')}
-            className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-all ${
-              mode === 'guided'
-                ? 'bg-amber-500/10 text-amber-400 shadow-[0_0_10px_rgba(245,158,11,0.1)] border border-amber-500/20'
-                : 'text-slate-400 hover:text-slate-200'
+            onClick={() => setMode('identity_creation')}
+            className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all border ${
+              mode === 'identity_creation'
+                ? 'bg-pink-500/10 text-pink-400 border-pink-500/20 shadow-[0_0_10px_rgba(236,72,153,0.1)]'
+                : 'bg-slate-950/50 text-slate-400 border-slate-800 hover:text-slate-200 hover:border-slate-700'
             }`}
+            title="Crear nueva identidad"
           >
-            <Bot size={16} />
-            Guía
-          </button>
-          
-          <button
-            onClick={() => setMode('collaborator')}
-            className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-all ${
-              mode === 'collaborator'
-                ? 'bg-emerald-500/10 text-emerald-400 shadow-[0_0_10px_rgba(16,185,129,0.1)] border border-emerald-500/20'
-                : 'text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <Sparkles size={16} />
-            Colaborador
+            <UserPlus size={16} />
+            <span className="hidden sm:inline">Crear ID</span>
           </button>
 
-          <button
-            onClick={() => setMode('expert')}
-            className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-all ${
-              mode === 'expert'
-                ? 'bg-rose-500/10 text-rose-400 shadow-[0_0_10px_rgba(244,63,94,0.1)] border border-rose-500/20'
-                : 'text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <Zap size={16} />
-            Experto
-          </button>
+          <div className="w-px h-6 bg-slate-800 hidden md:block" />
 
-          <div className="w-px h-6 bg-slate-800 mx-1"></div>
-
-          <button
-            onClick={() => setMode('manual_form')}
-            className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-all ${
-              mode === 'manual_form'
-                ? 'bg-indigo-500/10 text-indigo-400 shadow-[0_0_10px_rgba(99,102,241,0.1)] border border-indigo-500/20'
-                : 'text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <FileEdit size={16} />
-            Formulario
-          </button>
+          {/* 3. Identity Selector (Context Global) */}
+          {mode !== 'manual_form' && mode !== 'identity_creation' && (
+               <div className="relative group col-span-2 sm:col-span-1 sm:flex-1 md:flex-none">
+                  <select
+                    value={guideState.identity_id || ''}
+                    onChange={(e) => setGuideState(prev => ({ ...prev, identity_id: e.target.value || undefined }))}
+                    className="w-full md:w-auto appearance-none bg-slate-950 border border-slate-800 hover:border-slate-700 text-slate-300 text-sm rounded-lg pl-9 pr-8 py-2 focus:outline-none focus:ring-1 focus:ring-amber-500/50 transition-all cursor-pointer min-w-[160px]"
+                    title="Selecciona la identidad que Ara usará para generar el contenido"
+                  >
+                    <option value="">👤 Ara (Default)</option>
+                    {identities.map(id => (
+                      <option key={id.id} value={id.id}>
+                        🎭 {id.name}
+                      </option>
+                    ))}
+                  </select>
+                  <div className="absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-slate-500">
+                    <UserCircle size={16} />
+                  </div>
+               </div>
+          )}
         </div>
       </header>
       
@@ -339,6 +366,31 @@ export const Guide: React.FC = () => {
               </div>
 
               <form onSubmit={handleManualSubmit} className="space-y-6">
+                {/* Identity Selection */}
+                <div>
+                  <label className="block text-sm font-medium text-slate-300 mb-2">
+                    Identidad (Opcional)
+                  </label>
+                  <div className="relative">
+                    <UserCircle className="absolute left-3 top-3.5 text-slate-500" size={18} />
+                    <select
+                      value={manualFormData.identity_id}
+                      onChange={(e) => setManualFormData(prev => ({ ...prev, identity_id: e.target.value }))}
+                      className="w-full bg-slate-950 border border-slate-700 rounded-lg pl-10 pr-4 py-3 text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50 transition-all appearance-none"
+                    >
+                      <option value="">-- Usar Identidad de Marca (Default) --</option>
+                      {identities.map(id => (
+                        <option key={id.id} value={id.id}>
+                          {id.name} ({id.role || 'Custom'})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <p className="text-xs text-slate-500 mt-1">
+                    Sobrescribirá el tono predeterminado si la identidad tiene uno definido.
+                  </p>
+                </div>
+
                 {/* Topic */}
                 <div>
                   <label className="block text-sm font-medium text-slate-300 mb-2">

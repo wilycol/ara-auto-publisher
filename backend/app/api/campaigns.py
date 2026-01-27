@@ -107,9 +107,8 @@ def create_campaign(campaign: CampaignCreate, db: Session = Depends(get_db)):
         name=campaign.name,
         objective=campaign.objective,
         tone=campaign.tone,
-        topics=campaign.topics,
-        posts_per_day=campaign.posts_per_day,
-        schedule_strategy=campaign.schedule_strategy,
+        identity_id=campaign.identity_id,
+        # topics, posts_per_day, schedule_strategy removed from ORM
         status=campaign.status
     )
     db.add(db_campaign)
@@ -145,8 +144,12 @@ def update_campaign(campaign_id: int, campaign_update: CampaignUpdate, db: Sessi
         raise HTTPException(status_code=404, detail="Campaign not found")
 
     update_data = campaign_update.dict(exclude_unset=True)
+    
+    # Filter out fields that don't exist in the ORM model anymore
+    valid_fields = ["name", "objective", "tone", "status", "identity_id"]
     for key, value in update_data.items():
-        setattr(db_campaign, key, value)
+        if key in valid_fields:
+            setattr(db_campaign, key, value)
 
     db.add(db_campaign)
     db.commit()

@@ -2,11 +2,9 @@ export interface Campaign {
   id: number;
   name: string;
   project_id: number;
+  identity_id?: string;
   objective?: string;
   tone?: string;
-  topics?: string;
-  posts_per_day?: number;
-  schedule_strategy?: string;
   status: 'DRAFT' | 'ACTIVE' | 'PAUSED' | 'COMPLETED';
   start_date: string;
   end_date?: string;
@@ -22,7 +20,7 @@ export interface Post {
   content: string; // Legacy support
   scheduled_for?: string; // Backend field
   scheduled_date?: string; // Legacy field
-  status: 'DRAFT' | 'APPROVED' | 'SCHEDULED' | 'PUBLISHED' | 'FAILED' | 'PENDING';
+  status: 'DRAFT' | 'APPROVED' | 'SCHEDULED' | 'PUBLISHED' | 'FAILED' | 'PENDING' | 'GENERATED' | 'READY_MANUAL' | 'PUBLISHED_AUTO' | 'FAILED_AUTO_MANUAL_AVAILABLE';
   platform: 'linkedin';
 }
 
@@ -31,9 +29,7 @@ export interface CreateCampaignRequest {
   name: string;
   objective: string;
   tone: string;
-  topics: string;
-  posts_per_day?: number;
-  schedule_strategy?: string;
+  identity_id?: string;
   start_date: string;
   end_date?: string;
   status?: string;

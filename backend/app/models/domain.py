@@ -46,9 +46,25 @@ class FunctionalIdentity(Base):
     __tablename__ = "functional_identities"
     
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    project_id = Column(Integer, ForeignKey("projects.id"), nullable=True) # Vinculación a tenant
+    
     name = Column(String, nullable=False)
-    role = Column(String, nullable=False) # founder, dev, marketer
+    role = Column(String, nullable=True) # Deprecated/Optional in MVP 2.0
+    purpose = Column(String, nullable=True) # New MVP field
     tone = Column(String, nullable=True) # analytical, bold
+    preferred_platforms = Column(String, nullable=True) # JSON List
+    communication_style = Column(String, nullable=True) # short, long, storytelling, etc.
+    content_limits = Column(Text, nullable=True) # What NOT to do
+    status = Column(String, default="active") # draft/active
+    
+    # MVP PRO Fields (kept for compatibility, but focus is on strategic fields)
+    identity_type = Column(String, nullable=True) # marca, persona, etc.
+    campaign_objective = Column(String, nullable=True) # engagement, leads, etc.
+    target_audience = Column(Text, nullable=True)
+    language = Column(String, default="es")
+    preferred_cta = Column(String, nullable=True)
+    frequency = Column(String, default="medium")
+
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     
@@ -159,15 +175,15 @@ class Campaign(Base):
     tone = Column(String) # formal, didáctico, ácido
     # topics = Column(String) # Removed to match Supabase schema
     
-    # posts_per_day = Column(Integer, default=1) # Removed
-    # schedule_strategy = Column(String) # Removed
-    
+    identity_id = Column(UUID(as_uuid=True), ForeignKey("functional_identities.id"), nullable=True)
+
     status = Column(String, default=CampaignStatus.ACTIVE)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     # Relaciones
     project = relationship("Project", back_populates="campaigns")
     posts = relationship("Post", back_populates="campaign")
+    identity = relationship("FunctionalIdentity")
 
 class Topic(Base):
     """Temas sobre los que hablar"""

@@ -21,3 +21,10 @@ class AIProviderAdapter(ABC):
             str: El texto generado por el modelo.
         """
         pass
+
+    async def check_health(self) -> bool:
+        """
+        Verifica si el proveedor está disponible y la API Key es válida.
+        Por defecto retorna True (asume disponible si no se implementa).
+        """
+        return True

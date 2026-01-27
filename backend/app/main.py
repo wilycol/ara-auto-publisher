@@ -67,10 +67,14 @@ app = FastAPI(
 # Configurar CORS para permitir peticiones desde el Frontend
 allow_origins = [
     "http://localhost:5173", # Frontend Vite Dev
+    "http://localhost:5174", # Frontend Vite Dev (Backup Port)
     "http://127.0.0.1:5173",
+    "http://127.0.0.1:5174",
     "http://localhost:3000",
     "http://localhost:8000",
     "https://ara-auto-publisher-frontend.vercel.app", # Vercel Production
+    "http://192.168.1.4:5173", # LAN Access
+    "http://192.168.1.4:5174", # LAN Access Backup
 ]
 if settings.ENVIRONMENT == "production":
     if settings.FRONTEND_URL:

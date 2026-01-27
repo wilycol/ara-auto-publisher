@@ -113,6 +113,22 @@ class LocalFallbackProvider(AIProviderAdapter):
                      should_propose = False
 
 
+            # 4. START/HELLO Logic - Nuevo Flow Inicial (ARA 2.0)
+            is_start = not user_echo or (len(user_echo) < 10 and "hola" in user_echo_lower)
+            
+            if is_start:
+                 fallback_guide = {
+                    "message": "Hola, soy ARA. Aquí puedo ayudarte a crear contenido, ordenar ideas o armar campañas, incluso si no tienes nada claro todavía.\n\nPara empezar rápido, dime una de estas tres:",
+                    "options": [
+                        {"label": "Quiero promocionar algo", "value": "promocionar"},
+                        {"label": "Quiero crear contenido", "value": "contenido"},
+                        {"label": "Solo estoy explorando", "value": "explorando"}
+                    ],
+                    "state_patch": {},
+                    "updated_summary": "Inicio de conversación ARA."
+                }
+                 return json.dumps(fallback_guide, ensure_ascii=False)
+
             if should_propose:
                  fallback_guide = {
                     "message": f"Aquí tienes 2 estrategias listas para publicar basadas en '{user_echo}':\n\n### Opción A: Estrategia Directa\n**Objetivo:** Venta directa.\n**Post Propuesto:**\n> **Título: Cómo lograr X**\n> Contenido del post aquí...\n\n### Opción B: Estrategia Marca\n**Objetivo:** Branding.\n**Post Propuesto:**\n> **Título: Mi experiencia**\n> Contenido del post aquí...",
@@ -125,11 +141,12 @@ class LocalFallbackProvider(AIProviderAdapter):
                 }
                  return json.dumps(fallback_guide, ensure_ascii=False)
 
+            # Default Fallback (Respuesta Genérica Conversacional)
             fallback_guide = {
-                "message": f"¡Hola! 👋 Entiendo que quieres hablar de '{user_echo}'. ¿Podrías darme más detalles sobre tu público objetivo?",
+                "message": f"Entiendo '{user_echo}'. ¿Cuál es tu profesión o especialidad para afinar esto?",
                 "options": [
-                    {"label": "Emprendedores", "value": "emprendedores"},
-                    {"label": "Estudiantes", "value": "estudiantes"}
+                    {"label": "Soy Consultor", "value": "consultor"},
+                    {"label": "Soy Coach", "value": "coach"}
                 ],
                 "state_patch": {},
                 "updated_summary": "Conversación en modo respaldo local."

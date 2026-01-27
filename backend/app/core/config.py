@@ -18,11 +18,21 @@ class Settings(BaseSettings):
     # AI Engine Service URL
     AI_ENGINE_URL: str = "http://localhost:8001"
     
-    # AI Configuration
-    AI_PROVIDER: str = "mock" # options: mock, openai, deepseek
-    AI_API_KEY: str = "sk-placeholder"
-    AI_BASE_URL: str = "https://api.deepseek.com/v1"
-    AI_MODEL: str = "deepseek-chat"
+    # AI Configuration (Multi-Provider)
+    AI_PROVIDER_PRIORITY: str = "openai,openrouter,gemini,grok" # Orden de prioridad
+    AI_HEALTH_STRICT: bool = True
+    
+    # Provider Keys (Fallback Chain)
+    OPENAI_API_KEY: str = ""
+    OPENROUTER_API_KEY: str = ""
+    GEMINI_API_KEY: str = ""
+    GROK_API_KEY: str = ""
+
+    # Legacy (Mantener por compatibilidad temporal si es necesario)
+    AI_PROVIDER: str = "auto" 
+    AI_API_KEY: str = "" # Deprecated in favor of specific keys
+    AI_BASE_URL: str = ""
+    AI_MODEL: str = ""
 
     # Feature Flags (Defaults to FALSE for safety)
     FEATURE_LINKEDIN_ENABLED: bool = False

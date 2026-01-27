@@ -1,11 +1,14 @@
 import React, { useState } from 'react';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Megaphone, LogOut, Compass, LineChart, ShieldAlert, BrainCircuit, Menu, X, User, HelpCircle, Share2, ArrowLeft } from 'lucide-react';
+import { LayoutDashboard, Megaphone, LogOut, Compass, LineChart, ShieldAlert, BrainCircuit, Menu, X, User, HelpCircle, Share2, ArrowLeft, Users } from 'lucide-react';
+import { AIStatusBadge } from '../components/common/AIStatusBadge';
+import { IdentitiesManager } from '../components/identities/IdentitiesManager';
 
 export const DashboardLayout: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isIdentityModalOpen, setIsIdentityModalOpen] = useState(false);
 
   // Updated order based on user request (Logical Flow):
   // 1. Dashboard (Overview)
@@ -19,6 +22,7 @@ export const DashboardLayout: React.FC = () => {
   const navItems = [
     { icon: LayoutDashboard, label: 'Dashboard', path: '/' },
     { icon: Compass, label: 'Ara Post Manager', path: '/guide' },
+    { icon: Users, label: 'Identidades funcionales', action: () => setIsIdentityModalOpen(true) },
     { icon: BrainCircuit, label: 'Control Humano', path: '/control' },
     { icon: Megaphone, label: 'Campañas', path: '/campaigns' },
     { icon: LineChart, label: 'Tracking', path: '/tracking' },
@@ -57,14 +61,31 @@ export const DashboardLayout: React.FC = () => {
         </div>
         
         <nav className="mt-4 px-4 space-y-2">
-          {navItems.map((item) => {
+          {navItems.map((item, index) => {
             const Icon = item.icon;
+            
+            if (item.action) {
+              return (
+                <button
+                  key={index}
+                  onClick={() => {
+                    item.action();
+                    setIsMobileMenuOpen(false);
+                  }}
+                  className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium text-slate-400 hover:bg-slate-800 hover:text-slate-200 transition-all duration-200"
+                >
+                  <Icon size={20} />
+                  {item.label}
+                </button>
+              );
+            }
+
             const isActive = location.pathname === item.path;
             
             return (
               <Link
                 key={item.path}
-                to={item.path}
+                to={item.path!}
                 onClick={() => setIsMobileMenuOpen(false)}
                 className={`flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all duration-200 ${
                   isActive 
@@ -114,6 +135,7 @@ export const DashboardLayout: React.FC = () => {
             </h2>
           </div>
           <div className="flex items-center gap-4">
+            <AIStatusBadge />
             <span className="hidden sm:inline text-sm text-slate-500 font-mono">v0.1.0 (MVP)</span>
             <div className="w-8 h-8 bg-amber-500/20 rounded-full flex items-center justify-center text-amber-400 font-bold border border-amber-500/30 shadow-[0_0_10px_rgba(245,158,11,0.2)]">
               <User size={18} />
@@ -125,6 +147,13 @@ export const DashboardLayout: React.FC = () => {
           <Outlet />
         </div>
       </main>
+
+      {/* Identity Manager Modal */}
+      {isIdentityModalOpen && (
+        <IdentitiesManager 
+          onClose={() => setIsIdentityModalOpen(false)} 
+        />
+      )}
     </div>
   );
 };

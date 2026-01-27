@@ -38,8 +38,8 @@ export const GuideChat: React.FC<GuideChatProps> = ({
   return (
     <div className="flex flex-col h-full bg-slate-950">
       {/* Messages Area */}
-      <div className="flex-1 overflow-y-auto p-6 space-y-6 scrollbar-thin scrollbar-thumb-slate-800 scrollbar-track-transparent">
-        <div className="max-w-3xl mx-auto space-y-6">
+      <div className="flex-1 overflow-y-auto overflow-x-hidden p-3 md:p-6 space-y-4 md:space-y-6 scrollbar-thin scrollbar-thumb-slate-800 scrollbar-track-transparent">
+        <div className="max-w-3xl mx-auto space-y-4 md:space-y-6">
           {messages.map((msg) => (
             <div key={msg.id} className="space-y-4">
               <GuideMessage role={msg.role} content={msg.content} />

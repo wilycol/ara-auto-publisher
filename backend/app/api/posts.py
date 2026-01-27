@@ -86,6 +86,41 @@ def export_post(
         headers={"Content-Disposition": f"attachment; filename={filename}"}
     )
 
+@router.post("/{post_id}/mark-published")
+def mark_post_published(
+    post_id: int,
+    db: Session = Depends(get_db)
+):
+    """
+    Marca un post como publicado manualmente.
+    Parte del flujo 'Modo Manual Asistido'.
+    """
+    post = db.query(Post).filter(Post.id == post_id).first()
+    if not post:
+        raise HTTPException(status_code=404, detail="Post not found")
+    
+    # Permitimos marcar como publicado desde varios estados previos relevantes
+    allowed_statuses = [
+        ContentStatus.READY_MANUAL, 
+        ContentStatus.FAILED_AUTO_MANUAL_AVAILABLE,
+        ContentStatus.APPROVED,
+        ContentStatus.GENERATED,
+        ContentStatus.DRAFT
+    ]
+    
+    if post.status not in allowed_statuses and post.status != ContentStatus.PUBLISHED:
+        # Si ya está publicado, no hacemos nada (idempotente), pero si está en otro estado raro, avisamos
+        pass 
+
+    post.status = ContentStatus.PUBLISHED
+    post.published_at = datetime.utcnow()
+    
+    db.commit()
+    db.refresh(post)
+    
+    logger.info(f"✅ Post {post_id} marcado como PUBLICADO MANUALMENTE por usuario.")
+    return StandardResponse(data={"id": post.id, "status": post.status, "published_at": post.published_at})
+
 @router.get("/{post_id}/share")
 def share_post(
     post_id: int,

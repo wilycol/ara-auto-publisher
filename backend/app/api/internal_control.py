@@ -76,7 +76,15 @@ def get_dashboard_stats(db: Session = Depends(get_db)):
     overridden = db.query(CampaignAutomation).filter(CampaignAutomation.is_manually_overridden == True).count()
     
     # Error count (Fase 13)
-    errors = db.query(CampaignAutomation).filter(CampaignAutomation.last_error.isnot(None)).count()
+    # Check if 'last_error' column exists in CampaignAutomation model before querying
+    # For MVP robustness, if column doesn't exist, assume 0 errors to avoid 500
+    errors = 0
+    if hasattr(CampaignAutomation, 'last_error'):
+        try:
+            errors = db.query(CampaignAutomation).filter(CampaignAutomation.last_error.isnot(None)).count()
+        except Exception:
+            # If DB schema is behind code, ignore error counting
+            pass
     
     # Last Human Action
     # Search for decisions starting with MANUAL_ or EMERGENCY_

@@ -1,37 +1,46 @@
 import json
 import asyncio
-from datetime import datetime
+from datetime import datetime, timedelta
+import uuid
 from sqlalchemy.orm import Session
-from app.models.domain import UserProfile as DBUserProfile
+from app.models.domain import UserProfile as DBUserProfile, Campaign, Post, ContentStatus, FunctionalIdentity
 from app.schemas.guide import UserProfile as SchemaUserProfile
-from app.schemas.guide import GuideNextRequest, GuideNextResponse, GuideOption, GuideMode
-from app.services.ai_provider_service import AIProviderService
+from app.schemas.guide import GuideNextRequest, GuideNextResponse, GuideOption, GuideMode, IdentityDraft
+from app.services.ai_provider_service import ai_provider_service
+from app.services.ai_generator import AIGeneratorService
 from app.core.logging import logger
 
 class GuideOrchestratorService:
     def __init__(self):
-        self.ai_service = AIProviderService()
+        self.ai_service = ai_provider_service
 
     async def process_next_step(self, request: GuideNextRequest, db: Session = None) -> GuideNextResponse:
         """
         Orquesta el siguiente paso de la guía conversacional.
         Ahora soporta 3 modos: GUIDED (secuencial), COLLABORATOR (inferencia), EXPERT (directo).
         """
+        current_step = request.current_step
         
         # 0. Cargar Perfil Persistente (si existe y no está en state)
-        if db and not request.state.user_profile:
-            try:
-                # Asumimos Project ID 1 para Single Tenant Local
-                db_profile = db.query(DBUserProfile).filter_by(project_id=1).first()
-                if db_profile:
-                    request.state.user_profile = SchemaUserProfile(
-                        profession=db_profile.profession,
-                        specialty=db_profile.specialty,
-                        bio_summary=db_profile.bio_summary,
-                        target_audience_profile=db_profile.target_audience
-                    )
-            except Exception as e:
-                logger.error(f"Error loading user profile: {e}")
+        # ⚠️ FIX CRÍTICO DE PRIVACIDAD (ANTI-CHISME):
+        # Deshabilitamos la carga automática del perfil global (Project ID 1).
+        # Razón: En modo colaborativo, esto causa que sesiones nuevas "hereden" datos de sesiones previas
+        # o del usuario "dueño" del local, violando el aislamiento de sesión.
+        # Solo se debe cargar perfil si hay una autenticación explícita (que se implementará vía User ID en el futuro).
+        
+        # if db and not request.state.user_profile:
+        #     try:
+        #         # Asumimos Project ID 1 para Single Tenant Local
+        #         db_profile = db.query(DBUserProfile).filter_by(project_id=1).first()
+        #         if db_profile:
+        #             request.state.user_profile = SchemaUserProfile(
+        #                 profession=db_profile.profession,
+        #                 specialty=db_profile.specialty,
+        #                 bio_summary=db_profile.bio_summary,
+        #                 target_audience_profile=db_profile.target_audience
+        #             )
+        #     except Exception as e:
+        #         logger.error(f"Error loading user profile: {e}")
 
         # Contexto de Logging
         log_context = {
@@ -47,13 +56,33 @@ class GuideOrchestratorService:
             "ai_model": None
         }
 
+        # Fetch Identities for Context
+        identities_list = []
+        if db:
+            try:
+                # Asumimos Project ID 1
+                identities = db.query(FunctionalIdentity).filter_by(project_id=1).all()
+                identities_list = [{
+                    "id": str(i.id), 
+                    "name": i.name, 
+                    "role": i.role,
+                    "purpose": i.purpose,
+                    "tone": i.tone,
+                    "communication_style": i.communication_style,
+                    "content_limits": i.content_limits
+                } for i in identities]
+            except Exception as e:
+                logger.error(f"Error fetching identities for guide: {e}")
+
         try:
             response: GuideNextResponse = None
 
             if request.mode == GuideMode.COLLABORATOR:
-                response = await self._process_collaborator_mode(request, log_context, db)
+                response = await self._process_collaborator_mode(request, log_context, identities_list, db)
             elif request.mode == GuideMode.EXPERT:
                 response = await self._process_expert_mode(request, log_context, db)
+            elif request.mode == GuideMode.IDENTITY_CREATION:
+                response = await self._process_identity_creation_mode(request, log_context, db)
             else:
                 # Default to Guided (Legacy/Standard)
                 response = await self._process_guided_mode(request, log_context)
@@ -117,184 +146,211 @@ class GuideOrchestratorService:
     # -------------------------------------------------------------------------
     # 🔵 MODO 2: COLLABORATOR (Conversacional, Inferencia, Flexible)
     # -------------------------------------------------------------------------
-    async def _process_collaborator_mode(self, request: GuideNextRequest, log_ctx: dict, db: Session = None) -> GuideNextResponse:
+    async def _process_collaborator_mode(self, request: GuideNextRequest, log_ctx: dict, identities: list, db: Session = None) -> GuideNextResponse:
         """
-        El corazón del producto (Modo Colaborador).
-        Implementa la identidad de ARA Post Manager: directo, propositivo y enfocado en cerrar campañas.
+        El corazón del producto (Modo Colaborador Adaptativo).
+        Implementa la arquitectura de "Reglas Suaves" e Identidad como Capa.
         """
-        # 🛡️ PRINCIPIO FUNDAMENTAL: SIN IA REAL = NO HAY MODO COLABORADOR
-        # Verificación inicial: ¿Tenemos al menos un proveedor real configurado?
-        if not self.ai_service.is_real_ai_available():
-            return self._create_blocked_response(request.current_step)
-
         state = request.state
         user_input = request.user_input or ""
         user_value = request.user_value or ""
         summary = state.conversation_summary or "Inicio de conversación."
 
-        # 🚀 DETECCIÓN DE INTENCIÓN DE CIERRE EXPLÍCITA
-        is_create_intent = (user_value == 'create') or ('crear campaña' in user_input.lower())
+        # ⚡ PRE-PROCESSING: Aplicar elecciones explícitas
+        if user_value:
+            if user_value.startswith("audience:"):
+                state.audience = user_value.replace("audience:", "").strip()
+            elif user_value.startswith("platform:"):
+                state.platform = user_value.replace("platform:", "").strip()
+            elif user_value.startswith("objective:"):
+                state.objective = user_value.replace("objective:", "").strip()
+            elif user_value.startswith("tone:"):
+                state.tone = user_value.replace("tone:", "").strip()
+
+        # 🎭 CONTEXTO DE IDENTIDAD ACTIVA (CAPA)
+        active_identity_instruction = ""
+        identity_context = ""
+        if state.identity_id:
+            found_id = next((i for i in identities if i["id"] == state.identity_id), None)
+            if found_id:
+                active_identity_instruction = f"""
+                ⚠️ CAPA DE IDENTIDAD ACTIVA:
+                No hables como "ARA" genérico. ADOPTA LA PERSPECTIVA DE: {found_id['name']}
+                Rol: {found_id['role']}
+                Tono: {found_id['tone']}
+                Estilo: {found_id['communication_style']}
+                
+                NOTA: Esta identidad es un LENTE para enfocar la solución, no una restricción para tu inteligencia.
+                Usa el vocabulario y prioridades de este rol.
+                """
+                identity_context = f"Identidad Activa: {found_id['name']} ({found_id['role']})"
+
+        # 🧠 PROMPT MAESTRO ADAPTATIVO (REFACTORIZADO V2)
+        # Enfoque: Inicio Limpio, Escucha Activa, Cero Asunciones.
         
-        # Validar si tenemos lo mínimo necesario
+        identities_str = json.dumps(identities, indent=2)
+        
+        # Validación de perfil para el prompt
+        has_profile_data = state.user_profile and (state.user_profile.profession or state.user_profile.bio_summary)
+        profile_str = f"{state.user_profile.profession} | {state.user_profile.specialty}" if has_profile_data else "DESCONOCIDO (Usuario Nuevo/No Autenticado)"
+
+        prompt = f"""
+        Eres ARA, una IA Colaborativa diseñada para interactuar como un humano, no como un sistema ni un formulario.
+        
+        {active_identity_instruction}
+
+        🛡️ REGLA DE SEGURIDAD CRÍTICA (OBLIGATORIA):
+        Nunca infieras, recuerdes o reutilices datos personales del usuario (profesión, experiencia, proyectos, identidad, historial) de conversaciones previas, otros usuarios o contexto implícito.
+        
+        Si un dato no fue:
+        1. Declarado explícitamente por el usuario en esta sesión, o
+        2. Cargado desde un perfil autenticado (Ver "Perfil Usuario" abajo)
+        
+        ENTONCES debes tratarlo como DESCONOCIDO.
+        Esto es hard rule, no sugerencia.
+
+        CONTEXTO GLOBAL (AISLADO):
+        - Perfil Usuario: {profile_str}
+        - Estado Actual: {state.model_dump_json(exclude={'conversation_summary'})}
+        - Identidades Disponibles: {identities_str}
+        - Resumen Conversación Actual: "{summary}"
+        
+        INPUT ACTUAL:
+        - Texto: "{user_input}"
+        - Selección Técnica: "{user_value}"
+
+        📜 REGLAS DE COMPORTAMIENTO (ESTRICTAS):
+
+        1. INICIO LIMPIO (TABULA RASA):
+           - No asumas nada. No conoces al usuario.
+           - Si el resumen de conversación está vacío o es el inicio: Tu única misión es ESCUCHAR.
+           - Pregunta base: "¿Qué necesitas ahora?" (o variante natural según contexto).
+
+        2. ESCUCHA ACTIVA + REFLEJO:
+           - Cuando el usuario te dé información suficiente, responde con este esquema (breve y humano):
+             a) "Esto es lo que dijiste..." (Hechos puros).
+             b) "Esto es lo que interpreto..." (Tus inferencias).
+             c) "Esto es lo que falta por aclarar..." (Dudas para avanzar).
+           - Si falta información, solo pregunta o aclara.
+
+        3. PROPUESTA SIN JERGA:
+           - Propón hasta 3 caminos concretos si corresponde.
+           - Lenguaje simple, cero marketing, cero tecnicismos innecesarios.
+           - Ningún camino es obligatorio.
+
+        4. GESTIÓN DE DUDA:
+           - Si el usuario duda: Explica corto y vuelve a proponer.
+           - Nunca fuerces decisiones.
+           - Nunca reinicies la conversación bruscamente.
+
+        5. 🚫 LENGUAJE PROHIBIDO (HARD RULES):
+           - JAMÁS digas: "Te voy a ayudar", "Estoy aquí para asistirte", "Recuerdo que...", "Como ya sabes...", "Hola [Nombre]".
+           - PREFIERE: "Dime y vemos", "Vamos por partes", "Si quieres, probamos esto".
+           - La Identidad Funcional (si hay activa) es solo un LENTE de tono, no un historial de vida.
+
+        TU TAREA AHORA:
+        1. Analiza el input. ¿Tienes suficiente para reflejar (Hechos/Inferencias/Faltantes)?
+        2. Genera una respuesta natural siguiendo las REGLAS DE COMPORTAMIENTO.
+        3. Define si hay cambios en el estado (state_patch).
+        4. Actualiza el resumen de la conversación.
+
+        FORMATO DE RESPUESTA (JSON PURO):
+        {{
+            "message": "Tu respuesta conversacional...",
+            "options": [
+                {{"label": "Opción Corta", "value": "valor_tecnico"}}
+            ],
+            "state_patch": {{
+                "user_profile": {{ "profession": "...", "bio_summary": "..." }},
+                "objective": "...",
+                "audience": "...",
+                "platform": "...",
+                "identity_id": "uuid..."
+            }},
+            "updated_summary": "Resumen actualizado...",
+            "user_level_detected": "principiante|intermedio|experto"
+        }}
+        """
+
+        # 🚀 LÓGICA DE EJECUCIÓN (CREACIÓN DE CAMPAÑA)
+        # Se activa si el usuario confirma explícitamente
+        is_create_intent = (user_value in ['create', 'confirm_create']) or ('crear campaña' in user_input.lower() and request.current_step > 2)
         has_minimum_data = state.objective and state.audience and state.platform
         
-        # 🕵️ FASE DE DESCUBRIMIENTO (REGLA 1: CONTRATO DE INTELIGENCIA)
-        # Si no tenemos perfil de usuario, entramos en modo "Entrevistador"
-        has_profile = state.user_profile and (state.user_profile.profession or state.user_profile.bio_summary)
-        
-        if not has_profile:
-            prompt = f"""
-            Eres ARA Post Manager. Tu prioridad #1 ahora es CONOCER AL USUARIO (Fase de Descubrimiento).
-            NO intentes crear campañas todavía.
-            NO asumas nada.
-
-            ESTADO ACTUAL (JSON):
-            {state.model_dump_json(exclude={'conversation_summary'})}
-
-            RESUMEN CONTEXTO PREVIO:
-            "{summary}"
-
-            INPUT USUARIO:
-            "{user_input}"
-
-            TU TAREA:
-            Actuar como un estratega senior que está entrevistando a un nuevo cliente.
-            
-            1. Si es el primer mensaje: Preséntate y explica que necesitas conocerlo para generar buen contenido.
-               Pregunta: "¿A qué te dedicas y cuál es tu especialidad principal?"
-            
-            2. Si ya respondió sobre su profesión:
-               Pregunta sobre su audiencia ideal o si tiene material previo (CV, web, etc).
-               
-            3. Si el usuario subió un archivo (simulado en texto como "[ATTACHMENT: CV.pdf]"):
-               Reconoce el archivo y extrae info clave para el perfil.
-
-            OBJETIVO:
-            Llenar el objeto 'user_profile' con:
-            - profession (e.g. "Consultor de Marketing")
-            - specialty (e.g. "B2B SaaS")
-            - bio_summary (Resumen de 1 linea)
-
-            FORMATO RESPUESTA FINAL (JSON PURO):
-            {{
-                "message": "Tu respuesta conversacional aquí...",
-                "options": [
-                    {{"label": "Soy Coach", "value": "Coach"}},
-                    {{"label": "Soy Consultor", "value": "Consultor"}}
-                ],
-                "state_patch": {{
-                    "user_profile": {{
-                        "profession": "...",
-                        "specialty": "...",
-                        "bio_summary": "..."
-                    }}
-                }},
-                "updated_summary": "..."
-            }}
-            """
-        else:
-            # MODO ESTÁNDAR (Ya tenemos perfil)
-            prompt = f"""
-            Eres ARA Post Manager (Modo Colaborador).
-            
-            PERFIL DEL USUARIO (CONTEXTO CRÍTICO):
-            Profesión: {state.user_profile.profession}
-            Especialidad: {state.user_profile.specialty}
-            Bio: {state.user_profile.bio_summary}
-
-            TU MISIÓN:
-            Transformar la intención del usuario en campañas listas para publicar, BASADAS EN SU PERFIL.
-            
-            ESTADO ACTUAL (JSON):
-            {state.model_dump_json(exclude={'conversation_summary'})}
-            
-            RESUMEN CONTEXTO PREVIO:
-            "{summary}"
-            
-            INPUT USUARIO:
-            "{user_input}"
-            
-            REGLA DE ORO:
-            - Usa el perfil del usuario para personalizar TODAS tus sugerencias.
-            - Si propone algo fuera de su especialidad, advierte sutilmente.
-            - ANTES DE CREAR: Confirma explícitamente el entendimiento (Regla 4).
-              "Entiendo que eres [Profesión] y buscas [Objetivo] para [Audiencia]. ¿Correcto?"
-
-            SALIDA ESPERADA (Cuando tengas info suficiente):
-            Debes entregar 2-3 opciones de campaña.
-            CADA OPCIÓN DEBE INCLUIR AL MENOS 1 POST COMPLETO (Título + Copy).
-
-            FORMATO DEL MENSAJE (Markdown):
-            "Aquí tienes [2-3] estrategias listas para publicar (basadas en tu perfil de {state.user_profile.profession}):
-
-            ### Opción A: [Nombre Estrategia]
-            **Objetivo:** ...
-            **Post Propuesto:**
-            > **[Título del Post]**
-            > [Cuerpo del post completo...]
-            
-            ---
-            
-            ### Opción B: [Nombre Estrategia]
-            ...
-            
-            Elige una opción y la programo ahora mismo."
-
-            OPCIONES DE RESPUESTA (JSON):
-            - Si faltan datos críticos: 
-              options: [
-                 {{"label": "[Respuesta sugerida 1]", "value": "..."}}, 
-                 {{"label": "[Respuesta sugerida 2]", "value": "..."}}
-              ]
-            - Si propones campañas (ESTADO FINAL):
-              options: [
-                 {{"label": "Opción A (Crear)", "value": "create"}}, 
-                 {{"label": "Opción B (Crear)", "value": "create"}},
-                 {{"label": "Generar más opciones", "value": "retry"}}
-              ]
-
-            FORMATO RESPUESTA FINAL (JSON PURO):
-            {{
-                "message": "...",
-                "options": [...],
-                "state_patch": {{ "campo": "valor_inferido" }},
-                "updated_summary": "..."
-            }}
-            
-            IMPORTANTE: TU RESPUESTA DEBE SER ÚNICAMENTE EL OBJETO JSON.
-            """
-
-        if is_create_intent and has_minimum_data and has_profile:
-            # 🛑 REGLA 4: CONFIRMACIÓN ANTES DE CREAR
-            # Si el usuario ya confirmó explícitamente (botón "Sí, crear")
-            if user_value == 'confirm_create':
+        if user_value == 'confirm_create' and has_minimum_data:
+             # --- LOGICA DE CREACION REAL (Mantenemos la existente) ---
+            if not db:
                 return GuideNextResponse(
-                    assistant_message=f"¡Excelente! Generando la campaña para {state.user_profile.profession} ahora mismo...",
-                    options=[],
+                    assistant_message="Error: No hay conexión a base de datos para guardar la campaña.",
+                    options=[], next_step=request.current_step, state_patch={}
+                )
+            
+            try:
+                # 1. Crear Campaña
+                identity_uuid = None
+                if state.identity_id:
+                    try:
+                        identity_uuid = uuid.UUID(state.identity_id)
+                    except:
+                        pass 
+
+                new_campaign = Campaign(
+                    project_id=1,
+                    name=f"Campaña: {state.objective[:40]}",
+                    objective=state.objective,
+                    tone=state.tone or "Professional",
+                    identity_id=identity_uuid,
+                    status="active"
+                )
+                db.add(new_campaign)
+                db.commit()
+                db.refresh(new_campaign)
+                
+                if new_campaign.identity_id:
+                    identity_chk = db.query(FunctionalIdentity).get(new_campaign.identity_id)
+                    new_campaign.identity = identity_chk
+
+                # 2. Generar Contenido
+                generator = AIGeneratorService()
+                target_platform = state.platform or "linkedin"
+                generated_posts = await generator.generate_posts(new_campaign, count=1, platform=target_platform)
+                
+                created_posts_count = 0
+                for post_data in generated_posts:
+                    new_post = Post(
+                        project_id=1,
+                        campaign_id=new_campaign.id,
+                        identity_id=new_campaign.identity_id,
+                        title=post_data.get("title", "Untitled Post"),
+                        content_text=post_data.get("content", ""),
+                        hashtags=post_data.get("hashtags", ""),
+                        cta=post_data.get("cta", ""),
+                        platform=target_platform,
+                        status=ContentStatus.GENERATED,
+                        scheduled_for=datetime.utcnow() + timedelta(days=1)
+                    )
+                    db.add(new_post)
+                    created_posts_count += 1
+                    
+                db.commit()
+                
+                return GuideNextResponse(
+                    assistant_message=f"¡Excelente! He creado la campaña **'{new_campaign.name}'** y generado **{created_posts_count} borrador(es)** listos para revisión.\n\nPuedes verlos en la lista de Posts.",
+                    options=[
+                        GuideOption(label="✨ Crear otra campaña", value="new_campaign")
+                    ],
                     next_step=6, 
                     state_patch={}
                 )
-            
-            # Si solo manifestó intención ("crear campaña") pero falta confirmar el resumen
-            topics_str = ", ".join(state.topics or ["General"])
-            confirmation_msg = (
-                f"Entiendo que:\n"
-                f"👤 **Perfil:** {state.user_profile.profession} ({state.user_profile.specialty})\n"
-                f"🎯 **Objetivo:** {state.objective}\n"
-                f"👥 **Audiencia:** {state.audience}\n"
-                f"📝 **Temas:** {topics_str}\n\n"
-                f"¿Confirmamos esto antes de crear la campaña?"
-            )
-            
-            return GuideNextResponse(
-                assistant_message=confirmation_msg,
-                options=[
-                    GuideOption(label="✅ Sí, crear campaña", value="confirm_create"),
-                    GuideOption(label="✏️ Modificar algo", value="modify")
-                ],
-                next_step=request.current_step, # Nos quedamos aquí hasta confirmar
-                state_patch={}
-            )
+                
+            except Exception as e:
+                logger.error(f"Error creating campaign via chat: {e}")
+                return GuideNextResponse(
+                    assistant_message=f"Hubo un problema técnico al crear la campaña: {str(e)}",
+                    options=[GuideOption(label="Intentar de nuevo", value="confirm_create")],
+                    next_step=request.current_step,
+                    state_patch={}
+                )
 
         def fallback():
             return GuideNextResponse(
@@ -305,8 +361,8 @@ class GuideOrchestratorService:
             )
 
         try:
-            # Usamos skip_ai_fallback=True para asegurar que NO usamos el LocalFallbackProvider
-            response = await self._execute_ai_step_flexible(prompt, log_ctx, request.current_step, fallback, skip_ai_fallback=True)
+            # Ejecutar IA con el prompt unificado
+            response = await self._execute_ai_step_flexible(prompt, log_ctx, request.current_step, fallback, skip_ai_fallback=False)
 
             # PERSISTENCIA DE PERFIL (DB)
             if db and response.state_patch and "user_profile" in response.state_patch:
@@ -336,7 +392,8 @@ class GuideOrchestratorService:
             logger.warning(f"⚠️ Error inicial en Collaborator Mode: {e}. Reintentando...")
             try:
                 # Reintento único por si fue un error estocástico (hallucination, JSON malformado)
-                return await self._execute_ai_step_flexible(prompt, log_ctx, request.current_step, fallback, skip_ai_fallback=True)
+                # También permitimos fallback en el reintento
+                return await self._execute_ai_step_flexible(prompt, log_ctx, request.current_step, fallback, skip_ai_fallback=False)
             except Exception as e2:
                 # Si llegamos aquí, es porque la IA Real falló dos veces
                 logger.warning(f"🚫 MODO COLABORADOR BLOQUEADO: Error en ejecución de IA Real (Reintento fallido): {e2}")
@@ -536,6 +593,223 @@ class GuideOrchestratorService:
                 next_step=request.current_step,
                 state_patch={}
             )
+
+    # -------------------------------------------------------------------------
+    # 🆕 MODO 4: IDENTITY CREATION (Chat Wizard)
+    # -------------------------------------------------------------------------
+    async def _process_identity_creation_mode(self, request: GuideNextRequest, log_ctx: dict, db: Session = None) -> GuideNextResponse:
+        step = request.current_step
+        state = request.state
+        draft = state.identity_draft or IdentityDraft()
+        user_input = request.user_input
+        user_value = request.user_value
+        
+        # 1. Start -> Name
+        if step == 1:
+            return GuideNextResponse(
+                assistant_message="Hola, vamos a configurar una nueva **Identidad Funcional**. \n\nEsta identidad será una 'máscara' que Ara usará para crear contenido específico.\n\nPara empezar, **¿qué nombre le ponemos?** (Ej. 'Experto Técnico', 'Marca Personal', 'Ventas Agresivas')",
+                options=[],
+                next_step=2,
+                state_patch={"identity_draft": draft.model_dump()}
+            )
+
+        # 2. Name -> Type (NEW)
+        if step == 2:
+            draft.name = user_input
+            return GuideNextResponse(
+                assistant_message=f"Genial, llamaremos a esta identidad **'{draft.name}'**.\n\n¿Qué **tipo de identidad** es?",
+                options=[
+                    GuideOption(label="👤 Marca Personal", value="personal_brand"),
+                    GuideOption(label="🏢 Corporativa / Marca", value="corporate"),
+                    GuideOption(label="🤝 Ventas / Comercial", value="sales"),
+                    GuideOption(label="🎧 Soporte / Atención", value="support")
+                ],
+                next_step=3,
+                state_patch={"identity_draft": draft.model_dump()}
+            )
+
+        # 3. Type -> Purpose (Modified)
+        if step == 3:
+            draft.identity_type = user_value or "personal_brand"
+            return GuideNextResponse(
+                assistant_message=f"Tipo definido: **{draft.identity_type}**.\n\n¿Cuál es su **propósito principal**? (Ej. 'Posicionarme como experto', 'Generar leads cualificados')",
+                options=[
+                    GuideOption(label="🎓 Educar / Divulgar", value="Educar a mi audiencia"),
+                    GuideOption(label="💰 Vender / Convertir", value="Generar leads y ventas"),
+                    GuideOption(label="🌟 Branding / Posicionamiento", value="Mejorar marca personal")
+                ],
+                next_step=4,
+                state_patch={"identity_draft": draft.model_dump()}
+            )
+            
+        # 4. Purpose -> Audience (NEW)
+        if step == 4:
+            draft.purpose = user_value or user_input
+            return GuideNextResponse(
+                assistant_message=f"Entendido: *{draft.purpose}*.\n\n¿A quién le hablamos? Describe tu **público objetivo** brevemente.",
+                options=[], # Free text
+                next_step=5,
+                state_patch={"identity_draft": draft.model_dump()}
+            )
+
+        # 5. Audience -> Tone (Modified)
+        if step == 5:
+            draft.target_audience = user_input
+            return GuideNextResponse(
+                assistant_message=f"Audiencia clara. 🎯\n\n¿Qué **tono de voz** debe usar esta identidad?",
+                options=[
+                    GuideOption(label="👔 Profesional / Serio", value="Profesional, directo y con autoridad"),
+                    GuideOption(label="😊 Amigable / Cercano", value="Cercano, uso de emojis, primera persona"),
+                    GuideOption(label="🔥 Provocador / Disruptivo", value="Disruptivo, polémico, desafiante")
+                ],
+                next_step=6,
+                state_patch={"identity_draft": draft.model_dump()}
+            )
+            
+        # 6. Tone -> Platforms (Modified)
+        if step == 6:
+            draft.tone = user_value or user_input
+            return GuideNextResponse(
+                assistant_message="¿En qué **plataformas** se enfocará principalmente esta identidad?",
+                options=[
+                    GuideOption(label="LinkedIn (Texto/PDF)", value="linkedin"),
+                    GuideOption(label="Twitter/X (Hilos)", value="twitter"),
+                    GuideOption(label="Ambas", value="linkedin,twitter")
+                ],
+                next_step=7,
+                state_patch={"identity_draft": draft.model_dump()}
+            )
+
+        # 7. Platforms -> Operational Details (NEW)
+        if step == 7:
+            val = user_value or user_input
+            draft.platforms = val.split(",") if "," in val else [val]
+            return GuideNextResponse(
+                assistant_message="Últimos detalles operativos. ⚙️\n\nDefine un **Call to Action (CTA)** por defecto (Ej. 'Sígueme para más', 'Agenda una llamada').\n(El idioma será Español y frecuencia Media por defecto)",
+                options=[
+                    GuideOption(label="👇 'Sígueme para más'", value="Sígueme para más contenido"),
+                    GuideOption(label="📅 'Agenda una cita'", value="Agenda una cita en el link"),
+                    GuideOption(label="💬 'Comenta abajo'", value="Déjame tu opinión en comentarios")
+                ],
+                next_step=8,
+                state_patch={"identity_draft": draft.model_dump()}
+            )
+            
+        # 8. Operational -> Confirmation
+        if step == 8:
+            draft.preferred_cta = user_value or user_input
+            draft.language = "es" # Default
+            draft.frequency = "medium" # Default
+            draft.campaign_objective = "engagement" # Default
+            
+            summary = (
+                f"**Resumen de Identidad**\n\n"
+                f"📌 **Nombre:** {draft.name} ({draft.identity_type})\n"
+                f"🎯 **Propósito:** {draft.purpose}\n"
+                f"👥 **Audiencia:** {draft.target_audience}\n"
+                f"🗣️ **Tono:** {draft.tone}\n"
+                f"📢 **Plataformas:** {', '.join(draft.platforms or [])}\n"
+                f"🔚 **CTA:** {draft.preferred_cta}\n\n"
+                f"¿Creamos esta identidad?"
+            )
+            
+            return GuideNextResponse(
+                assistant_message=summary,
+                options=[
+                    GuideOption(label="✅ Sí, Crear Identidad", value="confirm_create"),
+                    GuideOption(label="✏️ Corregir (Reiniciar)", value="restart")
+                ],
+                next_step=9,
+                state_patch={"identity_draft": draft.model_dump()}
+            )
+
+        # 9. Action
+        if step == 9:
+            if user_value == "confirm_create":
+                if db:
+                    try:
+                        platforms_json = json.dumps(draft.platforms)
+
+                        if state.identity_id:
+                            existing = db.query(FunctionalIdentity).filter_by(id=state.identity_id).first()
+                            if existing:
+                                existing.name = draft.name
+                                existing.purpose = draft.purpose
+                                existing.tone = draft.tone
+                                existing.preferred_platforms = platforms_json
+                                # Update MVP PRO Fields
+                                existing.identity_type = draft.identity_type
+                                existing.campaign_objective = draft.campaign_objective
+                                existing.target_audience = draft.target_audience
+                                existing.language = draft.language
+                                existing.preferred_cta = draft.preferred_cta
+                                existing.frequency = draft.frequency
+                                
+                                if not existing.status:
+                                    existing.status = "active"
+                                db.commit()
+
+                                return GuideNextResponse(
+                                    assistant_message=f"Identidad **{draft.name}** actualizada exitosamente. ✅\n\nTus futuros contenidos usarán esta configuración.",
+                                    options=[GuideOption(label="🏁 Finalizar", value="close_wizard")],
+                                    next_step=10,
+                                    state_patch={},
+                                    status="success"
+                                )
+
+                        new_identity = FunctionalIdentity(
+                            project_id=1,
+                            name=draft.name,
+                            role="custom", # Legacy field requirement
+                            purpose=draft.purpose,
+                            tone=draft.tone,
+                            preferred_platforms=platforms_json,
+                            status="active",
+                            # MVP PRO Fields
+                            identity_type=draft.identity_type,
+                            campaign_objective=draft.campaign_objective,
+                            target_audience=draft.target_audience,
+                            language=draft.language,
+                            preferred_cta=draft.preferred_cta,
+                            frequency=draft.frequency
+                        )
+                        db.add(new_identity)
+                        db.commit()
+                        
+                        return GuideNextResponse(
+                            assistant_message=f"¡Identidad **{draft.name}** creada exitosamente! 🚀\n\nYa puedes seleccionarla cuando crees nuevas campañas o posts.",
+                            options=[GuideOption(label="🏁 Finalizar", value="close_wizard")],
+                            next_step=10,
+                            state_patch={},
+                            status="success"
+                        )
+                    except Exception as e:
+                        logger.error(f"Failed to create identity: {e}")
+                        return GuideNextResponse(
+                            assistant_message=f"Hubo un error guardando la identidad: {str(e)}",
+                            options=[GuideOption(label="Reintentar", value="confirm_create")],
+                            next_step=9,
+                            state_patch={},
+                            status="error"
+                        )
+            
+            if user_value == "restart":
+                 return GuideNextResponse(
+                    assistant_message="Reiniciando el asistente...",
+                    options=[],
+                    next_step=1,
+                    state_patch={"identity_draft": {}}
+                )
+                
+            # Default fallthrough
+            return GuideNextResponse(
+                assistant_message="Por favor confirma si quieres crear la identidad.",
+                options=[GuideOption(label="✅ Sí, Crear Identidad", value="confirm_create")],
+                next_step=9,
+                state_patch={}
+            )
+
+        return GuideNextResponse(assistant_message="Estado desconocido.", options=[], next_step=1, state_patch={})
 
     # -------------------------------------------------------------------------
     # STEPS (Reused for Guided & Underlying Logic)

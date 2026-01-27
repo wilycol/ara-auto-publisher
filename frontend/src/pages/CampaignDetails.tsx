@@ -2,6 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { campaignsApi } from '../api/campaigns';
 import { postsApi } from '../api/posts';
+import { identitiesApi } from '../api/identities';
+import type { Identity } from '../api/identities';
 import type { Campaign, Post } from '../types';
 import { ArrowLeft, Calendar, Target, FileText, Share2, AlertCircle, Edit, Wand2, X, Check, Copy, Rocket } from 'lucide-react';
 
@@ -12,7 +14,8 @@ export const CampaignDetails: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  
+  const [identities, setIdentities] = useState<Identity[]>([]);
+
   // Edit Campaign Mode State
   const [isEditing, setIsEditing] = useState(false);
   const [editForm, setEditForm] = useState<Partial<Campaign>>({});
@@ -28,8 +31,18 @@ export const CampaignDetails: React.FC = () => {
   useEffect(() => {
     if (id) {
       loadCampaign(parseInt(id));
+      loadIdentities();
     }
   }, [id]);
+
+  const loadIdentities = async () => {
+    try {
+      const data = await identitiesApi.getAll();
+      setIdentities(data);
+    } catch (err) {
+      console.error('Error loading identities', err);
+    }
+  };
 
   const loadCampaign = async (campaignId: number) => {
     try {
@@ -41,7 +54,6 @@ export const CampaignDetails: React.FC = () => {
         name: data.name,
         objective: data.objective,
         tone: data.tone,
-        topics: data.topics,
         start_date: data.start_date,
         end_date: data.end_date
       });
@@ -162,6 +174,19 @@ export const CampaignDetails: React.FC = () => {
     }
   };
 
+  const handleMarkAsPublished = async (post: Post) => {
+    if (!confirm("¿Confirmas que ya has publicado este post manualmente? Se marcará como COMPLETADO.")) return;
+    
+    try {
+        await postsApi.markAsPublished(post.id);
+        if (campaign) await loadCampaign(campaign.id);
+    } catch (err: any) {
+        console.error('Error marking post as published', err);
+        const msg = err.response?.data?.detail || 'Error al actualizar el post.';
+        alert(msg);
+    }
+  };
+
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'ACTIVE': return 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20';
@@ -174,9 +199,15 @@ export const CampaignDetails: React.FC = () => {
 
   const getPostStatusColor = (status: string) => {
     switch (status) {
-      case 'PUBLISHED': return 'bg-emerald-500/10 text-emerald-400';
-      case 'SCHEDULED': return 'bg-blue-500/10 text-blue-400';
-      case 'FAILED': return 'bg-red-500/10 text-red-400';
+      case 'PUBLISHED': 
+      case 'PUBLISHED_AUTO': return 'bg-emerald-500/10 text-emerald-400';
+      case 'SCHEDULED': 
+      case 'SCHEDULED_AUTO': return 'bg-blue-500/10 text-blue-400';
+      case 'FAILED': 
+      case 'FAILED_AUTO_MANUAL_AVAILABLE': return 'bg-red-500/10 text-red-400';
+      case 'READY_MANUAL': return 'bg-amber-500/10 text-amber-400 border border-amber-500/20 animate-pulse';
+      case 'GENERATED': return 'bg-purple-500/10 text-purple-400';
+      case 'APPROVED': return 'bg-cyan-500/10 text-cyan-400';
       default: return 'bg-slate-700 text-slate-400';
     }
   };
@@ -306,6 +337,26 @@ export const CampaignDetails: React.FC = () => {
             
             <div className="space-y-4">
               <div>
+                <label className="text-xs text-slate-500 uppercase tracking-wider block mb-1">Identidad</label>
+                {isEditing ? (
+                   <select 
+                     value={editForm.identity_id || ''}
+                     onChange={(e) => setEditForm({...editForm, identity_id: e.target.value})}
+                     className="w-full bg-slate-800 border border-slate-700 rounded p-2 text-slate-300 text-sm"
+                   >
+                     <option value="">-- Por defecto (Ara) --</option>
+                     {identities.map(id => (
+                       <option key={id.id} value={id.id}>{id.name}</option>
+                     ))}
+                   </select>
+                ) : (
+                   <p className="text-slate-300 font-medium">
+                     {identities.find(i => i.id === campaign.identity_id)?.name || 'Ara (Por defecto)'}
+                   </p>
+                )}
+              </div>
+
+              <div>
                 <label className="text-xs text-slate-500 uppercase tracking-wider block mb-1">Objetivo</label>
                 {isEditing ? (
                   <textarea 
@@ -329,31 +380,6 @@ export const CampaignDetails: React.FC = () => {
                   />
                 ) : (
                   <p className="text-slate-300">{campaign.tone || 'Estándar'}</p>
-                )}
-              </div>
-
-              <div>
-                <label className="text-xs text-slate-500 uppercase tracking-wider block mb-1">Temáticas</label>
-                {isEditing ? (
-                   <input 
-                   type="text"
-                   value={editForm.topics}
-                   onChange={(e) => setEditForm({...editForm, topics: e.target.value})}
-                   className="w-full bg-slate-800 border border-slate-700 rounded p-2 text-slate-300 text-sm"
-                   placeholder="Separados por coma"
-                 />
-                ) : (
-                  <div className="flex flex-wrap gap-2 mt-1">
-                    {campaign.topics ? (
-                      campaign.topics.split(',').map((topic, i) => (
-                        <span key={i} className="px-2 py-1 bg-slate-800 text-slate-300 text-xs rounded border border-slate-700">
-                          {topic.trim()}
-                        </span>
-                      ))
-                    ) : (
-                      <p className="text-slate-500 italic">Sin temáticas específicas</p>
-                    )}
-                  </div>
                 )}
               </div>
             </div>
@@ -477,13 +503,13 @@ export const CampaignDetails: React.FC = () => {
                         <div className="flex justify-end gap-2 mt-2 flex-wrap">
                           <button 
                             onClick={() => handleEditPost(post)}
-                            disabled={post.status === 'APPROVED'}
+                            disabled={post.status === 'APPROVED' || post.status === 'PUBLISHED' || post.status === 'PUBLISHED_AUTO'}
                             className="text-xs text-slate-400 hover:text-white px-2 py-1 hover:bg-slate-800 rounded transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
                           >
                             Editar
                           </button>
                           
-                          {post.status !== 'APPROVED' && (
+                          {(post.status === 'GENERATED' || post.status === 'DRAFT') && (
                             <button 
                                 onClick={() => handleApprovePost(post)}
                                 className="text-xs text-amber-500 hover:text-amber-400 px-2 py-1 hover:bg-amber-500/10 rounded transition-colors border border-amber-500/20"
@@ -498,6 +524,17 @@ export const CampaignDetails: React.FC = () => {
                                 className="text-xs text-white bg-blue-600 hover:bg-blue-500 px-3 py-1 rounded transition-colors shadow-lg shadow-blue-600/20 flex items-center gap-1"
                             >
                                 <Rocket size={12} /> Publicar Ahora
+                            </button>
+                          )}
+
+                          {/* Manual Publishing Action */}
+                          {(post.status === 'READY_MANUAL' || post.status === 'FAILED_AUTO_MANUAL_AVAILABLE' || post.status === 'GENERATED' || post.status === 'APPROVED') && (
+                             <button 
+                                onClick={() => handleMarkAsPublished(post)}
+                                className="text-xs text-slate-300 hover:text-white border border-slate-600 hover:border-slate-500 px-3 py-1 rounded transition-colors flex items-center gap-1 ml-2"
+                                title="Marcar como publicado si ya lo hiciste manualmente"
+                            >
+                                <Check size={12} /> Ya lo publiqué
                             </button>
                           )}
                         </div>

@@ -1,13 +1,27 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, ArrowRight, Check, Shield, Zap, Lock } from 'lucide-react';
 import { campaignsApi } from '../../../api/campaigns';
 import { controlApi } from '../../../api/control';
+import { identitiesApi } from '../../../api/identities';
+import type { Identity } from '../../../api/identities';
 import type { CreateCampaignRequest } from '../../../types';
 
 interface UnifiedWizardProps {
   onClose: () => void;
   onSuccess: () => void;
+}
+
+interface WizardFormData {
+  name: string;
+  project_id: number;
+  identity_id?: string;
+  objective: string;
+  tone: string;
+  topics: string;
+  posts_per_day: number;
+  schedule_strategy: string;
+  start_date: string;
 }
 
 type Step = 'DETAILS' | 'STRATEGY' | 'AUTOMATION' | 'REVIEW';
@@ -16,11 +30,17 @@ export const UnifiedWizard: React.FC<UnifiedWizardProps> = ({ onClose, onSuccess
   const [step, setStep] = useState<Step>('DETAILS');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [identities, setIdentities] = useState<Identity[]>([]);
+
+  useEffect(() => {
+    identitiesApi.getAll().then(setIdentities).catch(console.error);
+  }, []);
 
   // Form State
-  const [formData, setFormData] = useState<CreateCampaignRequest>({
+  const [formData, setFormData] = useState<WizardFormData>({
     name: '',
     project_id: 1, // Default project for now
+    identity_id: '',
     objective: '',
     tone: 'Professional',
     topics: '',
@@ -59,7 +79,19 @@ export const UnifiedWizard: React.FC<UnifiedWizardProps> = ({ onClose, onSuccess
     try {
       // 1. Create Campaign
       console.log("Creating campaign...", formData);
-      const campaign = await campaignsApi.create(formData);
+      
+      // Map Wizard data to API payload (topics merged into objective)
+      const apiPayload: CreateCampaignRequest = {
+        name: formData.name,
+        project_id: formData.project_id,
+        objective: `${formData.objective} [Temas: ${formData.topics}]`,
+        tone: formData.tone,
+        start_date: formData.start_date,
+        status: 'active',
+        identity_id: formData.identity_id || undefined
+      };
+
+      const campaign = await campaignsApi.create(apiPayload);
       
       // 2. Setup Automation (using project_id from campaign or formData)
       console.log("Setting up automation...", campaign.project_id);
@@ -120,6 +152,21 @@ export const UnifiedWizard: React.FC<UnifiedWizardProps> = ({ onClose, onSuccess
                   placeholder="Ej: Lanzamiento Q1 2026"
                 />
               </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Identidad (Quién publica)</label>
+                <select 
+                  value={formData.identity_id || ''}
+                  onChange={(e) => setFormData({...formData, identity_id: e.target.value})}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                >
+                    <option value="">-- Usar identidad por defecto (Ara) --</option>
+                    {identities.map(id => (
+                        <option key={id.id} value={id.id}>{id.name}</option>
+                    ))}
+                </select>
+              </div>
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Objetivo Principal</label>
                 <textarea 
