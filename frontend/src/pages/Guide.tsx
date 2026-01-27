@@ -20,14 +20,7 @@ export const Guide: React.FC = () => {
   const navigate = useNavigate();
   const [isProcessing, setIsProcessing] = useState(false);
   const [isBlocked, setIsBlocked] = useState(false);
-  const [mode, setMode] = useState<ViewMode>('collaborator');
   const [identities, setIdentities] = useState<Identity[]>([]);
-  
-  // Ref to track current mode for async operations
-  const modeRef = React.useRef(mode);
-  useEffect(() => {
-    modeRef.current = mode;
-  }, [mode]);
 
   const loadIdentities = () => {
     identitiesApi.getAll().then(setIdentities).catch(console.error);
@@ -37,24 +30,115 @@ export const Guide: React.FC = () => {
     loadIdentities();
   }, []);
   
-  // 🧠 FASE 4.2 — Observabilidad: Session ID
+  // ------------------------------------------------------------------
+  // 🧠 FASE 4.2 — Observabilidad & Persistencia (Session ID + State)
+  // ------------------------------------------------------------------
+  
+  // Constantes de persistencia
+  const STORAGE_KEYS = {
+    SESSION_ID: 'ara_session_id',
+    MESSAGES: 'ara_messages',
+    GUIDE_STATE: 'ara_guide_state',
+    MODE: 'ara_mode',
+    TIMESTAMP: 'ara_timestamp'
+  };
+  const SESSION_TTL = 4 * 60 * 60 * 1000; // 4 horas de validez
+
+  // Helper para cargar sesión persistida
+  const loadSession = () => {
+    try {
+      const timestamp = localStorage.getItem(STORAGE_KEYS.TIMESTAMP);
+      if (!timestamp) return null;
+
+      const now = Date.now();
+      if (now - parseInt(timestamp, 10) > SESSION_TTL) {
+        // Sesión expirada: limpiar
+        Object.values(STORAGE_KEYS).forEach(key => localStorage.removeItem(key));
+        return null;
+      }
+
+      return {
+        sessionId: localStorage.getItem(STORAGE_KEYS.SESSION_ID),
+        messages: JSON.parse(localStorage.getItem(STORAGE_KEYS.MESSAGES) || '[]'),
+        guideState: JSON.parse(localStorage.getItem(STORAGE_KEYS.GUIDE_STATE) || 'null'),
+        mode: localStorage.getItem(STORAGE_KEYS.MODE) as ViewMode
+      };
+    } catch (e) {
+      console.error("Error loading session:", e);
+      return null;
+    }
+  };
+
+  // Cargar sesión al inicio (una sola vez)
+  const savedSession = React.useMemo(() => loadSession(), []);
+
   const [sessionId] = useState(() => {
+    if (savedSession?.sessionId) return savedSession.sessionId;
     if (typeof crypto !== 'undefined' && crypto.randomUUID) {
       return crypto.randomUUID();
     }
     return 'session-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
   });
 
+  const [mode, setMode] = useState<ViewMode>(() => savedSession?.mode || 'collaborator');
+
+  // Ref to track current mode for async operations
+  const modeRef = React.useRef(mode);
+  useEffect(() => {
+    modeRef.current = mode;
+  }, [mode]);
+
   // Estado del negocio (La verdad)
-  const [guideState, setGuideState] = useState<GuideState>({
+  const [guideState, setGuideState] = useState<GuideState>(() => savedSession?.guideState || {
     step: 1
   });
 
   // Estado de UX (Lo que ve el usuario)
-  const [messages, setMessages] = useState<Message[]>([]);
+  // Inicializamos directamente con lo guardado o el mensaje default para evitar flash
+  const [messages, setMessages] = useState<Message[]>(() => {
+    if (savedSession?.messages && savedSession.messages.length > 0) {
+      return savedSession.messages;
+    }
+    // Fallback inicial si no hay sesión
+    /* La lógica de getInitialMessage necesita 'mode', que ya tenemos */
+    const initialMode = savedSession?.mode || 'collaborator';
+    let initMsg = '';
+    switch (initialMode) {
+      case 'collaborator': initMsg = 'Soy ARA Post Manager, tu copiloto para convertir ideas desordenadas en campañas claras y accionables. Vamos al grano. ¿Qué objetivo tienes con tu campaña?'; break;
+      case 'expert': initMsg = '¿Objetivo de la campaña?'; break;
+      case 'identity_creation': initMsg = 'Hola, vamos a configurar una nueva Identidad Funcional. ¿Qué nombre le ponemos?'; break;
+      case 'guided': default: initMsg = 'Cuéntame qué quieres lograr con tu contenido.\nNo pienses en redes todavía, piensa en el objetivo.'; break;
+    }
+    
+    return [{
+      id: Date.now().toString(),
+      role: 'ai',
+      content: initMsg
+    }];
+  });
 
-  // Inicializar mensaje según modo
+  // Persistencia automática ante cambios
   useEffect(() => {
+    const saveSession = () => {
+      localStorage.setItem(STORAGE_KEYS.SESSION_ID, sessionId);
+      localStorage.setItem(STORAGE_KEYS.MESSAGES, JSON.stringify(messages));
+      localStorage.setItem(STORAGE_KEYS.GUIDE_STATE, JSON.stringify(guideState));
+      localStorage.setItem(STORAGE_KEYS.MODE, mode);
+      localStorage.setItem(STORAGE_KEYS.TIMESTAMP, Date.now().toString());
+    };
+    saveSession();
+  }, [sessionId, messages, guideState, mode]);
+
+  // Ref para controlar inicialización vs cambio de modo
+  const isFirstRender = React.useRef(true);
+
+  // Inicializar mensaje según modo (Solo cuando el usuario CAMBIA de modo, no al recargar)
+  useEffect(() => {
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
+      return;
+    }
+
     const initMsg = getInitialMessage(mode);
     setMessages([{
       id: Date.now().toString(),
@@ -65,6 +149,7 @@ export const Guide: React.FC = () => {
     setIsProcessing(false); // Reset processing state on mode switch
     setIsBlocked(false); // Reset blocked state on mode switch
   }, [mode]);
+
 
   const getInitialMessage = (m: ViewMode): string => {
     switch (m) {
