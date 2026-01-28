@@ -73,6 +73,7 @@ allow_origins = [
     "http://localhost:3000",
     "http://localhost:8000",
     "https://ara-auto-publisher-frontend.vercel.app", # Vercel Production
+    "https://ara-auto-publisher-frontend-git-dev-willy-devs-projects.vercel.app", # Vercel Dev/Preview
     "http://192.168.1.4:5173", # LAN Access
     "http://192.168.1.4:5174", # LAN Access Backup
 ]
