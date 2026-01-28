@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from typing import List, Optional, Any, Dict, Union
 from enum import Enum
 
@@ -37,10 +37,10 @@ class IdentityDraft(BaseModel):
 class GuideState(BaseModel):
     step: int
     user_profile: Optional[UserProfile] = None
-    objective: Optional[str] = None
-    audience: Optional[str] = None
-    platform: Optional[str] = None
-    tone: Optional[str] = None
+    objective: Optional[Union[str, List[str]]] = None
+    audience: Optional[Union[str, List[str]]] = None
+    platform: Optional[Union[str, List[str]]] = None
+    tone: Optional[Union[str, List[str]]] = None
     topics: Optional[Union[List[str], str]] = None
     postsPerDay: Optional[Union[int, str]] = None
     scheduleStrategy: Optional[str] = None
@@ -48,6 +48,13 @@ class GuideState(BaseModel):
     conversation_summary: Optional[str] = ""
     identity_draft: Optional[IdentityDraft] = None
     identity_id: Optional[str] = None
+
+    @field_validator('objective', 'audience', 'platform', 'tone', mode='before')
+    @classmethod
+    def normalize_list_to_string(cls, v):
+        if isinstance(v, list):
+            return ", ".join(map(str, v))
+        return v
 
 class GuideNextRequest(BaseModel):
     current_step: int
