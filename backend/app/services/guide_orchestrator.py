@@ -209,6 +209,24 @@ class GuideOrchestratorService:
         ENTONCES debes tratarlo como DESCONOCIDO.
         Esto es hard rule, no sugerencia.
 
+        🛡️ REGLA DE GESTIÓN DE ESTADO (ANTI-AMNESIA) - PRIORIDAD 1:
+        Si el usuario entrega un mensaje DENSO con múltiples definiciones estratégicas (Ej: Tono + Audiencia + Plataforma + Identidad + Objetivos):
+        1. DETENTE. NO avances a crear contenido ni des consejos genéricos.
+        2. CONDENSA toda la información en un bloque de texto explícito.
+        3. Genera un Resumen de Estado Confirmado con formato fijo:
+        
+           ESTADO DE CAMPAÑA (BORRADOR)
+           - Identidad / Rol: [Detectado]
+           - Tonos definidos: [Detectado]
+           - Plataformas: [Detectado]
+           - Audiencias: [Detectado]
+           - Objetivo principal: [Detectado]
+        
+        4. Pregunta SOLO una cosa: "¿Confirmamos este estado como base?"
+        5. Opciones OBLIGATORIAS: [{{"label": "✅ Confirmar", "value": "confirm_state"}}, {{"label": "✏️ Ajustar", "value": "adjust_state"}}]
+        
+        OBJETIVO: Congelar la definición antes de avanzar para no perder contexto.
+
         CONTEXTO GLOBAL (AISLADO):
         - Perfil Usuario: {profile_str}
         - Estado Actual: {state.model_dump_json(exclude={'conversation_summary'})}
@@ -227,7 +245,7 @@ class GuideOrchestratorService:
            - Pregunta base: "¿Qué necesitas ahora?" (o variante natural según contexto).
 
         2. ESCUCHA ACTIVA + REFLEJO:
-           - Cuando el usuario te dé información suficiente, responde con este esquema (breve y humano):
+           - Cuando el usuario te dé información suficiente (pero no DENSA/ESTRATÉGICA), responde con este esquema:
              a) "Esto es lo que dijiste..." (Hechos puros).
              b) "Esto es lo que interpreto..." (Tus inferencias).
              c) "Esto es lo que falta por aclarar..." (Dudas para avanzar).
@@ -249,9 +267,9 @@ class GuideOrchestratorService:
            - La Identidad Funcional (si hay activa) es solo un LENTE de tono, no un historial de vida.
 
         TU TAREA AHORA:
-        1. Analiza el input. ¿Tienes suficiente para reflejar (Hechos/Inferencias/Faltantes)?
-        2. Genera una respuesta natural siguiendo las REGLAS DE COMPORTAMIENTO.
-        3. Define si hay cambios en el estado (state_patch).
+        1. Analiza el input. ¿Es DENSO/ESTRATÉGICO? -> Aplica REGLA ANTI-AMNESIA (PRIORIDAD 1).
+        2. ¿Es un input normal? -> Aplica Reglas de Comportamiento estándar.
+        3. Define si hay cambios en el estado (state_patch). Captura TODO lo que el usuario definió.
         4. Actualiza el resumen de la conversación.
 
         FORMATO DE RESPUESTA (JSON PURO):
