@@ -95,6 +95,33 @@ class LocalFallbackProvider(AIProviderAdapter):
                 if "quiero vender algo" in user_echo_lower:
                      should_propose = True
             
+            # 3. SIMULACIÓN ANTI-AMNESIA (NUEVO)
+            # Si detectamos un input denso con múltiples definiciones
+            input_lower = user_echo.lower() if user_echo else prompt_lower
+            
+            # Criterio: Rol + Objetivo + (Plataforma o Tono)
+            has_role = any(x in input_lower for x in ["soy ", "trabajo como", "mi rol", "abogado"])
+            has_objective = any(x in input_lower for x in ["quiero", "necesito", "objetivo", "vender", "conseguir"])
+            has_detail = any(x in input_lower for x in ["linkedin", "instagram", "twitter", "tono", "serio", "divertido"])
+            
+            if has_role and has_objective and has_detail:
+                # Retornar estructura de confirmación de estado
+                return json.dumps({
+                    "message": "He detectado una definición estratégica completa. Antes de avanzar, confirmemos la base:",
+                    "options": [
+                        {"label": "✅ Confirmar", "value": "confirm_state"},
+                        {"label": "✏️ Ajustar", "value": "adjust_state"}
+                    ],
+                    "state_patch": {
+                        "user_profile": {"profession": "Simulated Profession"},
+                        "objective": "Simulated Objective",
+                        "platform": "linkedin",
+                        "tone": "professional"
+                    },
+                    "updated_summary": "Usuario definió rol y objetivos claros.",
+                    "user_level_detected": "intermedio"
+                }, ensure_ascii=False)
+
             # 2. Si hay historial sustancial y no es un saludo inicial
             has_history = "RESUMEN CONTEXTO PREVIO" in prompt and len(prompt) > 800
             
