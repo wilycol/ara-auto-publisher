@@ -911,6 +911,20 @@ class GuideOrchestratorService:
             if updated_summary:
                 patch["conversation_summary"] = updated_summary
             
+            # 🛡️ SANITIZACIÓN DE TIPOS (Evita Error 422)
+            # La IA a veces devuelve listas para campos que deben ser strings.
+            # Esto rompe la validación Pydantic en el siguiente request del frontend.
+            string_fields = ["objective", "audience", "platform", "tone"]
+            for key in string_fields:
+                if key in patch:
+                    val = patch[key]
+                    if isinstance(val, list):
+                        # Convertir lista a string (ej: ["Web", "Telegram"] -> "Web, Telegram")
+                        patch[key] = ", ".join([str(x) for x in val])
+                    elif not isinstance(val, str) and val is not None:
+                         # Asegurar que sea string (ej: int, bool)
+                        patch[key] = str(val)
+
             # Parsing robusto de opciones (igual que en _execute_ai_general)
             raw_options = data.get("options", [])
             valid_options = []
