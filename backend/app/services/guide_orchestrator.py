@@ -248,17 +248,41 @@ class GuideOrchestratorService:
            - PREFIERE: "Dime y vemos", "Vamos por partes", "Si quieres, probamos esto".
            - La Identidad Funcional (si hay activa) es solo un LENTE de tono, no un historial de vida.
 
+        6. 🔒 GESTIÓN DE INPUT DENSO (CRÍTICO - ANCLAJE DE CONTEXTO):
+           Si el usuario entrega un mensaje largo con múltiples decisiones estratégicas juntas (tono + audiencia + plataformas + identidad + objetivos), TU OBLIGACIÓN ES DETENER EL FLUJO.
+           
+           NO avances. NO propongas pasos siguientes.
+           Debes "anclar" el estado generando un bloque de confirmación en tu respuesta (Markdown):
+
+           **ESTADO DE CAMPAÑA (BORRADOR)**
+           - **Identidad / Rol:** ...
+           - **Tonos definidos:** ...
+           - **Plataformas:** ...
+           - **Audiencias:** ...
+           - **Objetivo principal:** ...
+
+           Y cierra preguntando ÚNICAMENTE: "¿Confirmamos este estado como base?"
+           
+           Si haces esto, asegura que tu `updated_summary` incluya explícitamente este bloque de estado para no perderlo en el siguiente turno.
+
+           CASO DE FRUSTRACIÓN:
+           Si el usuario dice "ya te lo dije", "te acabo de decir" o muestra molestia por repetición:
+           - NO discutas. NO te justifiques.
+           - Responde: "Tienes razón. No lo sellé como estado. Vamos a fijarlo ahora."
+           - Y procede inmediatamente a generar el BLOQUE DE ESTADO (Regla 6).
+
         TU TAREA AHORA:
-        1. Analiza el input. ¿Tienes suficiente para reflejar (Hechos/Inferencias/Faltantes)?
-        2. Genera una respuesta natural siguiendo las REGLAS DE COMPORTAMIENTO.
+        1. Analiza el input. ¿Es un "Input Denso"? -> Aplica Regla 6.
+        2. Si no, sigue flujo normal (Reglas 1-4).
         3. Define si hay cambios en el estado (state_patch).
         4. Actualiza el resumen de la conversación.
 
         FORMATO DE RESPUESTA (JSON PURO):
         {{
-            "message": "Tu respuesta conversacional...",
+            "message": "Tu respuesta conversacional (o el Bloque de Estado)...",
             "options": [
-                {{"label": "Opción Corta", "value": "valor_tecnico"}}
+                {{"label": "✅ Confirmar", "value": "confirm_state"}},
+                {{"label": "✏️ Ajustar", "value": "adjust_state"}}
             ],
             "state_patch": {{
                 "user_profile": {{ "profession": "...", "bio_summary": "..." }},
