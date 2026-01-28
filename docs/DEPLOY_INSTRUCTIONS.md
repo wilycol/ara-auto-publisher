@@ -55,6 +55,7 @@ Si ves `✅ [SEED DEV] Completed successfully`, la base de datos y la conexión 
 1.  Importa el proyecto en Vercel.
 2.  **Configuración Importante**:
     *   **Root Directory**: Asegúrate de seleccionar `frontend` (NO la raíz).
+    *   **Repositorio**: Asegúrate de conectar `wilycol/ara-auto-publisher` (el monorepo), NO el repo antiguo `ara-auto-publisher-frontend`.
     *   **Framework Preset**: Selecciona `Vite` (como se ve en tu captura).
     *   **Build Command**: Dejar por defecto (`npm run build`).
     *   **Output Directory**: Dejar por defecto (`dist`).
